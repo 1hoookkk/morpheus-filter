@@ -1,0 +1,32 @@
+# Build outputs
+Builds/
+build/
+*.vst3
+*.component
+*.dll
+*.exe
+
+# IDE
+.vs/
+.vscode/
+*.xcodeproj/
+*.xcworkspace/
+
+# JUCE
+JuceLibraryCode/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Debug/temp
+*.png
+*.zip
+nul
+
+# Audio files (keep reference files tracked separately)
+*.wav
+
+# Claude Code
+.claude/
