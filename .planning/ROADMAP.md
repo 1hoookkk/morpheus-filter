@@ -5,11 +5,11 @@
 
 ## Phase Overview
 
-| Phase | Name | Goal | Requirements | Plans |
-|-------|------|------|--------------|-------|
-| 1 | DSP Engine | Grid-based filter that matches reference files | DSP-01 through DSP-08, VAL-01 through VAL-04 | 4 plans |
-| 2 | Plugin Shell | VST3 wrapper with parameters | PLG-01 through PLG-06 | 0 plans |
-| 3 | Visualizer | Real-time frequency response display | VIS-01 through VIS-05 | 0 plans |
+| Phase | Name | Goal | Requirements | Plans | Status |
+|-------|------|------|--------------|-------|--------|
+| 1 | DSP Engine | Grid-based filter that matches reference files | DSP-01 through DSP-08, VAL-01 through VAL-04 | 4 plans | COMPLETE |
+| 2 | Plugin Shell | VST3 wrapper with parameters | PLG-01 through PLG-06 | 0 plans | Pending |
+| 3 | Visualizer | Real-time frequency response display | VIS-01 through VIS-05 | 0 plans | Pending |
 
 ---
 
@@ -22,10 +22,10 @@
 **Plans:** 4 plans in 3 waves
 
 Plans:
-- [ ] 01-grid-interpolator-PLAN.md — Data structures, Hz/semitone conversion, trilinear interpolation
-- [ ] 02-cartridge-loader-PLAN.md — JSON parsing with nlohmann/json, Hz-to-semitone on load
-- [ ] 03-filter-engine-PLAN.md — 7-stage cascade biquad processor with ultrasonic bypass
-- [ ] 04-validation-PLAN.md — Python reference implementation, RMS comparison, plots
+- [x] 01-grid-interpolator-PLAN.md — Data structures, Hz/semitone conversion, trilinear interpolation
+- [x] 02-cartridge-loader-PLAN.md — JSON parsing with nlohmann/json, Hz-to-semitone on load
+- [x] 03-filter-engine-PLAN.md — 7-stage cascade biquad processor with ultrasonic bypass
+- [x] 04-validation-PLAN.md — Python reference implementation, RMS comparison, plots
 
 Wave Structure:
 | Wave | Plans | Can Run Parallel |
@@ -154,4 +154,4 @@ Phase 3 (Visualizer) ─── depends on Phase 2 plugin structure
 ---
 
 *Roadmap created: 2026-01-18*
-*Last updated: 2026-01-19 after Phase 1 planning*
+*Last updated: 2026-01-19 — Phase 1 (DSP Engine) COMPLETE*
