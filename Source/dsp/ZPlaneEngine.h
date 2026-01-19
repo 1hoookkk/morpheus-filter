@@ -54,6 +54,14 @@ private:
 //==============================================================================
 // Compute biquad coefficients from grid stage data
 // Source: US Patent 5,170,369 and Audio EQ Cookbook
+//
+// Sample rate handling (DSP-07):
+// Because we store frequencies in semitones (absolute pitch) and convert to Hz
+// at render time, sample rate handling is automatic via the omega calculation:
+//   omega = 2 * pi * f / fs
+//
+// At 44.1kHz: 1kHz -> omega = 0.142
+// At 96kHz:   1kHz -> omega = 0.065 (lower, preserves analog frequency)
 //==============================================================================
 inline BiquadCoeffs computeBiquadFromStage(const GridStageData& stage, float sampleRate) {
     BiquadCoeffs c;
@@ -61,8 +69,14 @@ inline BiquadCoeffs computeBiquadFromStage(const GridStageData& stage, float sam
     // Convert semitone to Hz
     float freqHz = semitoneToHz(stage.freqSemitone);
 
-    // Check for ultrasonic - bypass if >20kHz (DSP-06)
-    if (freqHz > 20000.0f || isUltrasonic(stage.freqSemitone)) {
+    // Nyquist limit for this sample rate
+    float nyquist = sampleRate / 2.0f;
+
+    // Check for ultrasonic - bypass if:
+    // 1. Frequency > 95% of Nyquist (too close to aliasing)
+    // 2. Frequency > 20kHz (inaudible)
+    // This handles both DSP-06 (ultrasonic bypass) and DSP-07 (sample rate warping)
+    if (freqHz > nyquist * 0.95f || freqHz > 20000.0f) {
         c.bypass = true;
         c.b0 = 1.0f;
         c.b1 = c.b2 = c.a1 = c.a2 = 0.0f;
@@ -70,6 +84,8 @@ inline BiquadCoeffs computeBiquadFromStage(const GridStageData& stage, float sam
     }
 
     // Compute omega (normalized angular frequency)
+    // This naturally handles sample rate differences - same Hz value produces
+    // different omega at different sample rates, preserving analog frequency
     constexpr float PI = 3.14159265359f;
     float omega = 2.0f * PI * freqHz / sampleRate;
 
@@ -232,6 +248,26 @@ public:
 
     const BiquadSection& getSection(int idx) const {
         return sections[std::clamp(idx, 0, NUM_STAGES - 1)];
+    }
+
+    // Get current stage frequencies in Hz (for visualization/debugging)
+    // Uses current morph/transform/q parameters to interpolate grid
+    std::array<float, NUM_STAGES> getStageFrequencies() const {
+        std::array<float, NUM_STAGES> freqs;
+        auto stages = interpolator.interpolateAllStages(currentMorph, currentTransform, currentQ);
+        for (int i = 0; i < NUM_STAGES; ++i) {
+            freqs[i] = semitoneToHz(stages[i].freqSemitone);
+        }
+        return freqs;
+    }
+
+    // Get bypass state for each stage (true = ultrasonic, passthrough)
+    std::array<bool, NUM_STAGES> getStageBypassStates() const {
+        std::array<bool, NUM_STAGES> bypassed;
+        for (int i = 0; i < NUM_STAGES; ++i) {
+            bypassed[i] = sections[i].getCoefficients().bypass;
+        }
+        return bypassed;
     }
 
 private:
