@@ -30,3 +30,29 @@ nul
 
 # Claude Code
 .claude/
+
+# Development/debug scripts (root level only, not Tests/)
+/analyze_*.py
+/debug_*.py
+/validate_*.py
+/compare_*.py
+/log_encode_captures.py
+/*.lua
+
+# Session notes
+SESSION_SUMMARY_*.md
+
+# Alternative data formats
+talking_hedz_complete.json
+talking_hedz_log_encoded.json
+
+# Compile artifacts
+*.obj
+
+# Old/superseded implementations
+Source/dsp/GridCartridge.h
+Source/dsp/MorpheusEngine.h
+Source/dsp/ZPlaneFilter.h
+
+# Planning context (keep plans, ignore working docs)
+.planning/phases/*/01-CONTEXT.md
