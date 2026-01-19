@@ -112,4 +112,137 @@ inline BiquadCoeffs computeBiquadFromStage(const GridStageData& stage, float sam
     return c;
 }
 
+//==============================================================================
+// ZPlaneEngine - 7-stage cascade filter processor
+//
+// The Z-Plane filter is a CASCADE of 7 biquad sections. Signal flows
+// sequentially through all stages: stage0 -> stage1 -> ... -> stage6
+//
+// Coefficient update happens at CONTROL RATE (once per block), not per sample.
+// This matches the original hardware behavior and saves CPU.
+//==============================================================================
+class ZPlaneEngine {
+public:
+    static constexpr float DEFAULT_SAMPLE_RATE = 44100.0f;
+
+    ZPlaneEngine() = default;
+
+    //--------------------------------------------------------------------------
+    // Configuration
+    //--------------------------------------------------------------------------
+
+    // Set sample rate (for coefficient computation)
+    void setSampleRate(float fs) {
+        sampleRate = fs;
+        coefficientsValid = false;
+    }
+
+    // Set cartridge and interpolator
+    void setCartridge(const ZPlaneCartridge* cart) {
+        interpolator.setCartridge(cart);
+        coefficientsValid = false;
+    }
+
+    // Set filter parameters
+    // morph: 0-1 (Morph knob)
+    // q: 0-1 (Q knob, interpolates between 3 variants)
+    // transform: 0-1 (Transform parameter, typically 0 for Talking Hedz)
+    void setParameters(float morph, float q, float transform = 0.0f) {
+        if (morph != currentMorph || q != currentQ || transform != currentTransform) {
+            currentMorph = std::clamp(morph, 0.0f, 1.0f);
+            currentQ = std::clamp(q, 0.0f, 1.0f);
+            currentTransform = std::clamp(transform, 0.0f, 1.0f);
+            coefficientsValid = false;
+        }
+    }
+
+    //--------------------------------------------------------------------------
+    // State management
+    //--------------------------------------------------------------------------
+
+    // Reset filter state (clear all delay lines)
+    void reset() {
+        for (auto& section : sections) {
+            section.reset();
+        }
+    }
+
+    //--------------------------------------------------------------------------
+    // Coefficient update (call at control rate)
+    //--------------------------------------------------------------------------
+
+    // Update coefficients from current parameters
+    // Call this at control rate (every 32-128 samples), NOT per sample
+    void updateCoefficients() {
+        if (coefficientsValid) return;
+
+        // Get interpolated stage data for all 7 stages
+        auto stages = interpolator.interpolateAllStages(currentMorph, currentTransform, currentQ);
+
+        // Compute biquad coefficients for each stage
+        for (int i = 0; i < NUM_STAGES; ++i) {
+            BiquadCoeffs coeffs = computeBiquadFromStage(stages[i], sampleRate);
+            sections[i].setCoefficients(coeffs);
+        }
+
+        coefficientsValid = true;
+    }
+
+    //--------------------------------------------------------------------------
+    // Audio processing
+    //--------------------------------------------------------------------------
+
+    // Process single sample through 7-stage CASCADE
+    // Topology: signal flows stage0 -> stage1 -> ... -> stage6
+    float processSample(float input) {
+        float signal = input;
+        for (int i = 0; i < NUM_STAGES; ++i) {
+            signal = sections[i].processSample(signal);
+        }
+        return signal;
+    }
+
+    // Process block of samples (in-place)
+    void processBlock(float* buffer, int numSamples) {
+        // Update coefficients once per block (control rate)
+        updateCoefficients();
+
+        for (int i = 0; i < numSamples; ++i) {
+            buffer[i] = processSample(buffer[i]);
+        }
+    }
+
+    // Process block with separate input/output buffers
+    void processBlock(const float* input, float* output, int numSamples) {
+        updateCoefficients();
+
+        for (int i = 0; i < numSamples; ++i) {
+            output[i] = processSample(input[i]);
+        }
+    }
+
+    //--------------------------------------------------------------------------
+    // Accessors for debugging and visualization
+    //--------------------------------------------------------------------------
+
+    float getMorph() const { return currentMorph; }
+    float getQ() const { return currentQ; }
+    float getTransform() const { return currentTransform; }
+    float getSampleRate() const { return sampleRate; }
+
+    const BiquadSection& getSection(int idx) const {
+        return sections[std::clamp(idx, 0, NUM_STAGES - 1)];
+    }
+
+private:
+    GridInterpolator interpolator;
+    std::array<BiquadSection, NUM_STAGES> sections;
+
+    float sampleRate = DEFAULT_SAMPLE_RATE;
+    float currentMorph = 0.5f;
+    float currentQ = 0.5f;
+    float currentTransform = 0.0f;
+    bool coefficientsValid = false;
+};
+
 } // namespace ZPlane
