@@ -5,11 +5,11 @@
 
 ## Phase Overview
 
-| Phase | Name | Goal | Requirements |
-|-------|------|------|--------------|
-| 1 | DSP Engine | Grid-based filter that matches reference files | DSP-01 through DSP-08, VAL-01 through VAL-04 |
-| 2 | Plugin Shell | VST3 wrapper with parameters | PLG-01 through PLG-06 |
-| 3 | Visualizer | Real-time frequency response display | VIS-01 through VIS-05 |
+| Phase | Name | Goal | Requirements | Plans |
+|-------|------|------|--------------|-------|
+| 1 | DSP Engine | Grid-based filter that matches reference files | DSP-01 through DSP-08, VAL-01 through VAL-04 | 4 plans |
+| 2 | Plugin Shell | VST3 wrapper with parameters | PLG-01 through PLG-06 | 0 plans |
+| 3 | Visualizer | Real-time frequency response display | VIS-01 through VIS-05 | 0 plans |
 
 ---
 
@@ -18,6 +18,21 @@
 **Goal:** Build the grid-based filter engine and validate against EmulatorX3 reference recordings.
 
 **Why this first:** The DSP is the core value. If the filter doesn't sound right, nothing else matters. Validate accuracy before building UI.
+
+**Plans:** 4 plans in 3 waves
+
+Plans:
+- [ ] 01-grid-interpolator-PLAN.md — Data structures, Hz/semitone conversion, trilinear interpolation
+- [ ] 02-cartridge-loader-PLAN.md — JSON parsing with nlohmann/json, Hz-to-semitone on load
+- [ ] 03-filter-engine-PLAN.md — 7-stage cascade biquad processor with ultrasonic bypass
+- [ ] 04-validation-PLAN.md — Python reference implementation, RMS comparison, plots
+
+Wave Structure:
+| Wave | Plans | Can Run Parallel |
+|------|-------|------------------|
+| 1 | 01-grid-interpolator | - |
+| 2 | 02-cartridge-loader, 03-filter-engine | Yes |
+| 3 | 04-validation | - |
 
 ### Success Criteria
 
@@ -139,4 +154,4 @@ Phase 3 (Visualizer) ─── depends on Phase 2 plugin structure
 ---
 
 *Roadmap created: 2026-01-18*
-*Last updated: 2026-01-18 after initial creation*
+*Last updated: 2026-01-19 after Phase 1 planning*
