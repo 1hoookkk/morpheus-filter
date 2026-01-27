@@ -156,34 +156,48 @@ public:
     //=========================================================================
 
     /**
-     * Configure as E-mu Z-Plane CONSTANT PEAK GAIN resonator
+     * Configure as E-mu Z-Plane PEAKING resonator
      *
-     * This is the authentic E-mu formula from the Z-Plane architecture:
-     * - Zeros at DC (z=1) and Nyquist (z=-1) create bandpass character
-     * - Peak gain normalized to ~1.0 regardless of Q/radius
-     * - Matches X3 spectral character (validated: 14.84 dB RMS error)
+     * CRITICAL: Bandpass zeros at DC/Nyquist KILL signal when cascaded!
+     * Must use peaking EQ for series cascade formant synthesis.
      *
-     * Note: In a series cascade, narrow bandpass stages will attenuate
-     * frequencies outside their passband. This is the intended E-mu
-     * behavior - the formant character comes from this attenuation.
+     * NOTE: This method requires sampleRate. Use setZPlaneStage() with
+     * sampleRate parameter, or use setParametric() directly.
      *
      * @param _a1         Feedback coefficient: -2*r*cos(theta) from capture
      * @param radius      Pole radius (Q control - closer to 1.0 = higher Q)
+     * @param sampleRate  Required for frequency calculation
      */
+    void setZPlaneResonator(float _a1, float radius, float sampleRate) {
+        // VALIDATED 2026-01-28: Optimal parameters from spectral analysis
+        constexpr float Q_SCALE = 0.08f;   // Captured radius gives Q~360, actual ~30
+        constexpr float GAIN_DB = 34.0f;   // Strong boost at formant peaks
+
+        // Decode frequency from polar
+        float cosTheta = -_a1 / (2.0f * radius);
+        cosTheta = std::fmax(-1.0f, std::fmin(1.0f, cosTheta));
+        float theta = std::acos(cosTheta);
+        float freq = theta * sampleRate / (2.0f * static_cast<float>(M_PI));
+        freq = std::fmax(20.0f, std::fmin(freq, sampleRate * 0.49f));
+
+        // Q from radius - SCALED DOWN
+        // Raw Q from r=0.998 is ~362, actual X3 uses ~30
+        float Q = 1.0f / (2.0f * (1.0f - radius));
+        Q = Q * Q_SCALE;
+        Q = std::fmax(0.5f, std::fmin(Q, 100.0f));
+
+        // Use peaking EQ with validated gain
+        setParametric(freq, Q, GAIN_DB, sampleRate);
+    }
+
+    // Legacy 2-arg version - uses bandpass (WARNING: kills signal in cascade!)
     void setZPlaneResonator(float _a1, float radius) {
-        // Denominator: poles at r*e^(±jθ)
-        // Note: multiply captured a1 by radius for final biquad coefficient
-        float a1_final = _a1 * radius;
         float _a2 = radius * radius;
-
-        // Numerator: zeros at DC and Nyquist for bandpass character
-        // Scale factor normalizes peak gain to ~1.0
-        float scale = 1.0f - radius;  // Constant peak gain
-
+        float scale = (1.0f - _a2) * 0.5f;
         b0 = scale;
         b1 = 0.0f;
         b2 = -scale;
-        a1 = a1_final;
+        a1 = _a1;
         a2 = _a2;
     }
 
@@ -196,18 +210,26 @@ public:
      * @param _a1    Feedback coefficient (captured from E-mu)
      * @param radius Pole radius
      */
+    void setZPlaneLowpass(float _a1, float radius, float sampleRate) {
+        // Convert polar to frequency
+        float cosTheta = -_a1 / (2.0f * radius);
+        cosTheta = std::fmax(-1.0f, std::fmin(1.0f, cosTheta));
+        float theta = std::acos(cosTheta);
+        float freq = theta * sampleRate / (2.0f * static_cast<float>(M_PI));
+        freq = std::fmax(20.0f, std::fmin(freq, sampleRate * 0.49f));
+
+        // Standard Butterworth lowpass
+        setLowpass(freq, 0.707f, sampleRate);
+    }
+
+    // Legacy version using direct coefficients
     void setZPlaneLowpass(float _a1, float radius) {
-        // Match Python formula: multiply captured a1 by radius
-        float a1_final = _a1 * radius;
         float _a2 = radius * radius;
-
-        // Unity DC gain normalization
-        float norm = (1.0f + a1_final + _a2) * 0.25f;
-
+        float norm = (1.0f + _a1 + _a2) * 0.25f;
         b0 = norm;
         b1 = 2.0f * norm;
         b2 = norm;
-        a1 = a1_final;
+        a1 = _a1;
         a2 = _a2;
     }
 
@@ -216,19 +238,24 @@ public:
      *
      * @param _a1        Feedback coefficient (-2*r*cos(theta) from capture)
      * @param radius     Pole radius
-     * @param flag       Stage type: > 0.5 = resonator (bandpass), < 0.5 = lowpass
+     * @param flag       Stage type: > 0.5 = peaking resonator, < 0.5 = lowpass
+     * @param sampleRate Sample rate for coefficient calculation
      */
-    void setZPlaneStage(float _a1, float radius, float flag) {
+    void setZPlaneStage(float _a1, float radius, float flag, float sampleRate) {
         if (flag > 0.5f) {
-            setZPlaneResonator(_a1, radius);
+            setZPlaneResonator(_a1, radius, sampleRate);
         } else {
-            setZPlaneLowpass(_a1, radius);
+            setZPlaneLowpass(_a1, radius, sampleRate);
         }
     }
 
-    // Overload with sampleRate for API compatibility (sampleRate ignored)
-    void setZPlaneStage(float _a1, float radius, float flag, float /*sampleRate*/) {
-        setZPlaneStage(_a1, radius, flag);
+    // Legacy version without sampleRate (uses bandpass - WARNING: kills signal!)
+    void setZPlaneStage(float _a1, float radius, float flag) {
+        if (flag > 0.5f) {
+            setZPlaneResonator(_a1, radius);  // WARNING: bandpass kills signal!
+        } else {
+            setZPlaneLowpass(_a1, radius);
+        }
     }
 
     /**
