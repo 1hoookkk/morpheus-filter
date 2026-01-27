@@ -309,3 +309,46 @@ The ~7.6 dB remaining error comes from:
 3. **Lowpass stage tuning** - Check if lowpass cutoff needs offset too
 4. **Listen test in DAW** - Compare perceptual quality to X3
 5. **Consider hybrid approach** - Store actual peak frequencies instead of a1 coefficients
+
+---
+
+## Iteration 6 - LOWPASS STAGE ANALYSIS
+
+### Findings
+
+The lowpass stage is **critical** for matching X3. Analysis of its contribution:
+
+| Configuration | M100_Q100 Error | M0_Q100 Error |
+|---------------|-----------------|---------------|
+| No lowpass | 12.3 dB | 13.8 dB |
+| Decoded cutoff | 7.6 dB | 7.7 dB |
+| Optimal cutoff | 7.49 dB (750 Hz) | 7.48 dB (500 Hz) |
+
+**Key insight:** The lowpass stage provides ~5-6 dB error reduction. The decoded cutoffs are close to optimal - only 0.1-0.2 dB improvement possible from tuning.
+
+### Decoded vs Optimal Lowpass Cutoffs
+
+| Position | Decoded | Optimal | Difference |
+|----------|---------|---------|------------|
+| M100_Q100 | 1045 Hz | 750 Hz | -295 Hz |
+| M0_Q100 | ~20 Hz (clamped) | 500 Hz | +480 Hz |
+
+The M0 decode is problematic (cos_theta > 1.0 clamped), but the resulting 20 Hz lowpass still produces good results surprisingly.
+
+### Error Floor Analysis
+
+Current best achievable error: **~7.5 dB**
+
+Remaining error sources:
+1. **Spectral shape differences** - Overall tonal balance
+2. **Saturation character** - Our tanh() vs X3's unknown curve
+3. **High-frequency content above 6kHz** - Not included in comparison
+4. **Inter-stage interaction** - Cascade behavior differences
+5. **Source material** - Pink noise spectral balance
+
+### Recommendations
+
+1. **Don't optimize lowpass further** - diminishing returns (0.1 dB)
+2. **Focus on perceptual quality** - 7.5 dB spectral error is quite good
+3. **Listen test in DAW** - Spectral error ≠ perceptual similarity
+4. **Consider saturation tuning** - May improve perceived quality
