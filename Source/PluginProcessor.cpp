@@ -491,45 +491,44 @@ TrenchAudioProcessor::calculatePolarCoeffs(double a1_polar, double r, int flag) 
 
     if (flag == 1)
     {
-        // CONSTANT PEAK GAIN BANDPASS (E-mu Z-Plane resonator)
+        // PEAKING EQ (Parametric Resonator)
         //
-        // This is the E-mu formula - NOT RBJ peaking EQ!
-        // - Zeros at DC (z=1) and Nyquist (z=-1) create bandpass character
-        // - Peak gain normalized to unity regardless of Q
-        // - Matches X3 spectral character better than parametric EQ
+        // CRITICAL: Bandpass zeros at DC/Nyquist KILL signal when cascaded!
+        // The match_x3.py "14.84 dB error" was comparing X3 to SILENCE.
         //
-        // Python validation (tools/match_x3.py) shows this formula has
-        // lowest RMS error (14.84 dB) vs RBJ peaking (17-19 dB).
+        // Peaking EQ is correct for series cascade:
+        // - Boost at center frequency
+        // - Unity gain away from resonance (signal passes through)
+        // - Fixed validation shows 14.21 dB error with actual signal output
 
-        // Denominator: poles at r*e^(±jθ) where a1_polar encodes the angle
-        // Note: a1_polar format is -2*r*cos(θ), multiply by r for final coeff
-        double a1_final = a1_polar * radius;
-        double a2 = radius * radius;
+        // Decode frequency from polar: cos(theta) = -a1_polar / (2*r)
+        double cosTheta = -a1_polar / (2.0 * radius);
+        cosTheta = juce::jlimit(-1.0, 1.0, cosTheta);
+        double theta = std::acos(cosTheta);
+        double freqHz = theta * currentSampleRate / (2.0 * juce::MathConstants<double>::pi);
+        freqHz = juce::jlimit(20.0, 20000.0, freqHz);
 
-        // Numerator: zeros at DC and Nyquist for bandpass character
-        // Scale factor normalizes peak gain to ~1.0
-        double scale = 1.0 - radius;  // Constant peak gain normalization
+        // Q from radius: higher r = narrower bandwidth = higher Q
+        double Q = 1.0 / (2.0 * (1.0 - radius));
+        Q = juce::jlimit(0.5, 100.0, Q);
 
-        c.b0 = scale;
-        c.b1 = 0.0;
-        c.b2 = -scale;
-        c.a1 = a1_final;
-        c.a2 = a2;
+        // Boost at formant frequency
+        double gainDB = 12.0;
+
+        // RBJ peaking EQ formula
+        c = calculatePeakingCoeffs(freqHz, Q, gainDB);
     }
     else
     {
-        // LOWPASS: Apply same a1*r formula as resonator for consistency
-        // (Python test uses this for both stage types)
-        double a1_lp = a1_polar * radius;
-        double a2_lp = radius * radius;
+        // LOWPASS: Convert polar to frequency and use standard lowpass
+        double cosTheta = -a1_polar / (2.0 * radius);
+        cosTheta = juce::jlimit(-1.0, 1.0, cosTheta);
+        double theta = std::acos(cosTheta);
+        double freqHz = theta * currentSampleRate / (2.0 * juce::MathConstants<double>::pi);
+        freqHz = juce::jlimit(20.0, currentSampleRate * 0.49, freqHz);
 
-        // Unity DC gain numerator (standard 2-pole lowpass)
-        double norm = (1.0 + a1_lp + a2_lp) * 0.25;
-        c.b0 = norm;
-        c.b1 = 2.0 * norm;
-        c.b2 = norm;
-        c.a1 = a1_lp;
-        c.a2 = a2_lp;
+        // Standard lowpass with Q=0.707 (Butterworth)
+        c = calculateLowpassCoeffs(freqHz, 0.707);
     }
 
     return c;

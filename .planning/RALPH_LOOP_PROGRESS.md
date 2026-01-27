@@ -60,5 +60,39 @@
 3. Investigate whether a low-frequency "body" stage is needed for M0_Q100
 4. Compare FFT output of C++ plugin vs Python test vs X3 reference
 
-### Key Insight
-**The E-mu Z-Plane uses constant peak gain bandpass resonators, NOT parametric/peaking EQ.** This is the "E-mu character" - tight formant peaks with zeros at DC and Nyquist.
+### Key Insight (CORRECTED)
+~~The E-mu Z-Plane uses constant peak gain bandpass resonators~~
+
+**CRITICAL BUG FOUND IN VALIDATION**: The match_x3.py test was comparing X3 reference to **normalized silence**!
+
+- Bandpass cascade KILLS signal to zero (verified by tracing RMS through stages)
+- The "14.84 dB error" was actually comparing X3 to silence (15.22 dB)
+- This is why bandpass appeared to have "lower error" than peaking EQ
+
+**CORRECTED FINDING**: Peaking EQ is CORRECT for series cascade!
+- Peaking EQ output RMS: 0.048 (actual signal preserved)
+- Fixed spectral error: **14.21 dB** (meaningful comparison)
+- Bandpass zeros at DC/Nyquist kill signal when cascaded
+
+## Iteration 2 - VALIDATION BUG FIX
+
+### The Bug
+```python
+# match_x3.py compare_spectra() normalizes by RMS:
+our_normalized = our * (ref_rms / our_rms)
+# When signal is zero, this normalizes -200dB to match ref RMS
+# Result: comparing X3 to a flat line (silence), not our filter output!
+```
+
+### The Fix
+Reverted C++ code to use **RBJ Peaking EQ** for flag=1 stages:
+- Signal passes through cascade at unity gain
+- Boost at formant frequencies creates peaks
+- Multiple formant peaks coexist in output
+
+### Validation
+```
+Peaking EQ cascade output RMS: 0.047979 (-26.4 dB)  <- ACTUAL SIGNAL
+Reference RMS: 0.108951
+FIXED spectral RMS error: 14.21 dB  <- MEANINGFUL
+```
