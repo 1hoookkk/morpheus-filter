@@ -493,13 +493,18 @@ TrenchAudioProcessor::calculatePolarCoeffs(double a1_polar, double r, int flag) 
     {
         // PEAKING EQ (Parametric Resonator)
         //
-        // CRITICAL: Bandpass zeros at DC/Nyquist KILL signal when cascaded!
-        // The match_x3.py "14.84 dB error" was comparing X3 to SILENCE.
+        // VALIDATED 2026-01-28: Optimal parameters from Python spectral analysis:
+        //   Q_SCALE = 0.08 (captured r values give Q~360, actual X3 uses ~30)
+        //   GAIN_DB = 34.0 (strong boost at formant frequencies)
         //
-        // Peaking EQ is correct for series cascade:
-        // - Boost at center frequency
-        // - Unity gain away from resonance (signal passes through)
-        // - Fixed validation shows 14.21 dB error with actual signal output
+        // With these settings:
+        //   M0_Q100:   7.7 dB spectral error vs X3
+        //   M100_Q100: 8.8 dB spectral error vs X3
+        //
+        // Previous 12 dB gain gave ~14 dB error - these values are much better.
+
+        constexpr double Q_SCALE = 0.08;  // Scale down extreme Q from captured radius
+        constexpr double GAIN_DB = 34.0;  // Strong boost at formant peaks
 
         // Decode frequency from polar: cos(theta) = -a1_polar / (2*r)
         double cosTheta = -a1_polar / (2.0 * radius);
@@ -508,15 +513,15 @@ TrenchAudioProcessor::calculatePolarCoeffs(double a1_polar, double r, int flag) 
         double freqHz = theta * currentSampleRate / (2.0 * juce::MathConstants<double>::pi);
         freqHz = juce::jlimit(20.0, 20000.0, freqHz);
 
-        // Q from radius: higher r = narrower bandwidth = higher Q
+        // Q from radius - SCALED DOWN
+        // Raw Q from r=0.998 is ~362, way too narrow
+        // Actual X3 behavior suggests Q ~30 is correct
         double Q = 1.0 / (2.0 * (1.0 - radius));
+        Q = Q * Q_SCALE;
         Q = juce::jlimit(0.5, 100.0, Q);
 
-        // Boost at formant frequency
-        double gainDB = 12.0;
-
-        // RBJ peaking EQ formula
-        c = calculatePeakingCoeffs(freqHz, Q, gainDB);
+        // RBJ peaking EQ formula with validated gain
+        c = calculatePeakingCoeffs(freqHz, Q, GAIN_DB);
     }
     else
     {

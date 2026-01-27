@@ -96,3 +96,152 @@ Peaking EQ cascade output RMS: 0.047979 (-26.4 dB)  <- ACTUAL SIGNAL
 Reference RMS: 0.108951
 FIXED spectral RMS error: 14.21 dB  <- MEANINGFUL
 ```
+
+---
+
+## Iteration 3 - MAJOR BREAKTHROUGH: Q SCALING
+
+### Discovery: Captured Q Values Are Extreme
+
+The captured coefficients have ridiculously high Q values:
+- Stage 0: Q = 362 (r = 0.998619)
+- Stage 1: Q = 320 (r = 0.998437)
+- Stage 2: Q = 304 (r = 0.998353)
+- Stage 3: Q = 14  (r = 0.963737)
+
+These produce ultra-narrow "laser spike" resonances that don't match
+the broader peaks in the X3 reference audio.
+
+### The Fix: Scale Q Down by ~12.5x
+
+Through systematic parameter sweeps:
+
+| Q Scale | Effective Q | Gain (dB) | Error |
+|---------|-------------|-----------|-------|
+| 1.0     | 362         | 60        | 9.78 dB |
+| 0.1     | 36          | 36        | 8.86 dB |
+| **0.08**| **29**      | **34**    | **8.84 dB** |
+
+### OPTIMAL PARAMETERS
+
+```cpp
+constexpr double Q_SCALE = 0.08;  // Scale down extreme Q from captured radius
+constexpr double GAIN_DB = 34.0;  // Strong boost at formant peaks
+
+// Q calculation:
+double Q = 1.0 / (2.0 * (1.0 - radius));
+Q = Q * Q_SCALE;  // 362 → 29
+Q = juce::jlimit(0.5, 100.0, Q);
+```
+
+### Results After Fix
+
+| Morph Position | Previous Error | New Error | Improvement |
+|----------------|----------------|-----------|-------------|
+| M0_Q100        | ~14.2 dB       | **7.7 dB**| **6.5 dB better** |
+| M100_Q100      | ~14.2 dB       | **8.8 dB**| **5.4 dB better** |
+
+### Why This Works
+
+The captured radius values (0.998+) are the raw pole positions from X3's
+internal state, but the actual filter uses much wider bandwidth. This could be:
+
+1. **Internal Q limiting** in X3's DSP code
+2. **Different Q formula** than standard 1/(2*(1-r))
+3. **Pre-warping or bilinear transform** effects we're not modeling
+4. **Multiple Q reduction stages** in X3's processing
+
+Whatever the cause, **Q_SCALE = 0.08** and **GAIN_DB = 34** produce
+the closest match to X3's actual output.
+
+### Build Status
+- **VST3: SUCCESS** - Installed to `C:\Program Files\Common Files\VST3\TRENCH.vst3`
+- **Standalone: LOCKED** - Existing process running
+
+### Files Modified
+- `Source/PluginProcessor.cpp` - Updated calculatePolarCoeffs() with optimal parameters
+- `Source/DSP/Biquad.h` - Updated setZPlaneResonator() with optimal parameters
+
+---
+
+## Iteration 4 - FREQUENCY OFFSET DISCOVERY
+
+### Discovery: Captured Frequencies ≠ X3 Actual Peaks
+
+Spectral analysis revealed that X3 reference has peaks at **different frequencies**
+than our captured coefficients decode to:
+
+| Stage | Decoded (Hz) | X3 Peak (Hz) | Offset |
+|-------|--------------|--------------|--------|
+| 0     | 156          | 221          | +65 Hz |
+| 1     | 2262         | 2412         | +150 Hz |
+| 2     | 2662         | 2724         | +62 Hz |
+| 3     | 4793         | ~4880        | ~+87 Hz |
+
+### Results With Frequency Offsets
+
+| Configuration | Error |
+|---------------|-------|
+| Baseline (no offset) | 8.84 dB |
+| Observed offsets [+65, +150, +62, 0] | **7.60 dB** |
+| Uniform +60 Hz | 7.99 dB |
+
+### Why This Happens
+
+The captured `a1` coefficient encodes `cos(theta)` where theta is the digital
+frequency. But the ACTUAL peak in the output doesn't occur at exactly this
+frequency due to:
+
+1. **Q/Bandwidth effects** - high Q shifts the peak slightly
+2. **Cascade interaction** - multiple stages interact non-linearly
+3. **Coefficient quantization** - X3's internal precision differs
+4. **Bilinear transform warping** - analog prototype → digital
+
+The offset is NOT constant - it varies by frequency and stage.
+
+### Current Best Configuration
+
+```cpp
+// VALIDATED 2026-01-28: Spectral analysis results
+constexpr double Q_SCALE = 0.08;   // Captured radius gives Q~360, actual ~30
+constexpr double GAIN_DB = 34.0;   // Strong boost at formant peaks
+
+// Frequency offsets improve match but are stage-specific
+// For M100_Q100: [+65, +150, +62, 0] Hz
+// TODO: Implement per-stage or morph-dependent offsets
+```
+
+### Error Summary By Iteration
+
+| Iteration | Configuration | M100_Q100 Error |
+|-----------|---------------|-----------------|
+| 1 | Bandpass (wrong) | 14.84 dB (comparing to silence!) |
+| 1 | Peaking EQ, 12dB | 14.21 dB |
+| 2 | Validation bug fixed | 14.21 dB |
+| 3 | Q_scale=0.08, Gain=34dB | **8.84 dB** |
+| 4 | + Frequency offsets | **7.60 dB** |
+
+### Build Status
+- **VST3: SUCCESS** - Installed to `C:\Program Files\Common Files\VST3\TRENCH.vst3`
+- Includes Q_scale=0.08, Gain=34dB (without freq offsets)
+
+### Next Steps (Iteration 5)
+1. **Listen test** the VST3 in a DAW - compare to X3
+2. **Implement frequency offsets** in C++ (per-stage or calibrated)
+3. **Test M0_Q100** to see if offsets are different at other morph positions
+4. **Consider lookup table** - store actual X3 peak frequencies instead of decoded
+5. **Investigate the lowpass stage** - its decoded frequency is 1045 Hz, but where does X3 have the rolloff?
+
+### Key Insight
+
+The captured coefficients are mathematically correct but don't directly
+produce the right frequencies due to cascade/Q interactions. We have two options:
+
+**Option A: Calibrated Offsets**
+Apply empirically-measured frequency offsets per stage. Simple but requires
+measuring offsets at every morph position.
+
+**Option B: Peak-Frequency Capture**
+Instead of capturing `a1` coefficients, capture the ACTUAL spectral peak
+frequencies from X3. Then use those directly in our peaking EQ. More accurate
+but requires different capture methodology.
