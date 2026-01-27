@@ -132,3 +132,25 @@ python test_q_behavior.py       # Q knob response
 **Remaining uncertainty:** Per-stage frequency offsets are morph-dependent. Currently hardcoded for M100_Q100. Need interpolation or lookup table for full morph range.
 
 **Build status:** VST3 installed at `C:\Program Files\Common Files\VST3\TRENCH.vst3`
+
+---
+
+## Additional Findings (Iteration 9-10)
+
+### Morph-Dependent Offsets (Implemented)
+
+Offsets now interpolate linearly with morph:
+- M0: zero offsets
+- M100: [65, 150, 62, 0] Hz
+- Formula: `offset = morph * M100_OFFSETS[stage]`
+
+### Q-Dependency of Offsets (NOT Implemented)
+
+Analysis showed Q also affects optimal offsets:
+- M100_Q100: [65, 150, 50] → 7.46 dB
+- M100_Q0: [200, 100, 100] → 13.71 dB
+
+However, M100_Q0 coefficients decode to DC (Stage 0), making it a corner case.
+Current implementation is optimized for Q=100% which is the typical use case.
+
+**Future enhancement:** 2D offset interpolation (morph, Q) if Q0 quality matters.
