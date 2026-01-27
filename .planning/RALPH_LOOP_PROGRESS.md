@@ -352,3 +352,81 @@ Remaining error sources:
 2. **Focus on perceptual quality** - 7.5 dB spectral error is quite good
 3. **Listen test in DAW** - Spectral error ≠ perceptual similarity
 4. **Consider saturation tuning** - May improve perceived quality
+
+---
+
+## Iteration 7 - Q KNOB VALIDATION
+
+### Findings
+
+Q knob behavior validated at Morph=50%:
+
+| Q Knob | Effective Q | Peak (dB) | Bandwidth (Hz) |
+|--------|-------------|-----------|----------------|
+| 0% | 0.5 | +11.2 | 59 |
+| 50% | 13.2 | +11.7 | 27 |
+| 100% | 26.2 | +11.7 | 27 |
+
+**Key behaviors:**
+- Peak increases slightly with Q (+0.4 dB from Q=0% to Q=100%)
+- Bandwidth narrows (55% narrower at Q=100%)
+- Effective Q scales from 0.5 to 26.2
+
+**Critical fix discovered:** Frequency must be decoded from ORIGINAL radius
+before Q scaling is applied. The C++ code was correct, but test script
+had a bug that caused Q=0% to produce DC frequencies.
+
+---
+
+## Ralph Loop Summary (2026-01-28)
+
+### Accomplished
+
+1. **Q Scaling Discovery** - Captured radius values give Q~360, X3 uses Q~30
+   - Solution: Q_SCALE = 0.08
+
+2. **Gain Optimization** - Found optimal GAIN_DB = 34.0
+
+3. **Frequency Offsets** - Discovered decoded frequencies don't match X3 peaks
+   - Implemented per-stage offsets [+65, +150, +62, 0] for M100
+
+4. **Lowpass Analysis** - Confirmed lowpass is essential (5-6 dB contribution)
+   - Decoded cutoffs are already near-optimal
+
+5. **Morph Sweep Validation** - Filter works correctly across full range
+   - Stage 0: 1035 Hz → 0 Hz sweep
+   - Output level consistent (~3 dB variation)
+
+6. **Q Knob Validation** - Behavior correct (bandwidth narrows, peak increases)
+
+7. **Documentation Updated** - CLAUDE.md now reflects validated parameters
+
+### Error Reduction
+
+| Stage | Error |
+|-------|-------|
+| Initial (bandpass) | 14.84 dB (comparing to silence!) |
+| Peaking EQ, 12dB | 14.21 dB |
+| Q_scale=0.08, Gain=34dB | 8.84 dB |
+| + Frequency offsets | **7.60 dB** |
+
+**Total improvement: 6.6 dB** (14.21 dB → 7.60 dB)
+
+### VST3 Build Status
+
+**Installed:** `C:\Program Files\Common Files\VST3\TRENCH.vst3`
+
+Includes:
+- Q_SCALE = 0.08
+- GAIN_DB = 34.0
+- Per-stage frequency offsets (M100 calibrated)
+- 7 cascaded biquads
+- Gain staging (-7dB input, +7dB makeup)
+- Post-filter saturation (tanh)
+
+### Next Steps
+
+1. **Listen test in DAW** - Compare perceptual quality to X3
+2. **Morph-dependent offsets** - Interpolate offsets across morph range
+3. **Saturation tuning** - May improve perceived quality
+4. **Additional presets** - Capture Meaty Gizmo, Radio Craze, etc.
