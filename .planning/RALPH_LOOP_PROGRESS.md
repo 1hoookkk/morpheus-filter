@@ -245,3 +245,67 @@ measuring offsets at every morph position.
 Instead of capturing `a1` coefficients, capture the ACTUAL spectral peak
 frequencies from X3. Then use those directly in our peaking EQ. More accurate
 but requires different capture methodology.
+
+---
+
+## Iteration 5 - FREQUENCY OFFSETS IMPLEMENTED IN C++
+
+### Changes Made
+
+Implemented per-stage frequency offsets in `PluginProcessor.cpp`:
+
+```cpp
+// Per-stage frequency offsets (calibrated for M100_Q100)
+static constexpr double FREQ_OFFSETS[7] = {
+    65.0,   // Stage 0: 156 Hz → 221 Hz (X3 peak)
+    150.0,  // Stage 1: 2262 Hz → 2412 Hz
+    62.0,   // Stage 2: 2662 Hz → 2724 Hz
+    0.0,    // Stage 3: 4793 Hz (no offset)
+    0.0, 0.0, 0.0  // Stages 4-6
+};
+```
+
+Updated call sites to pass stage index:
+- `updateCoefficientsFromPolar()` line 398
+- `getFrequencyResponse()` line 838
+
+### Validation Results
+
+```
+Baseline (no offset): 8.837 dB
+With offsets [+65, +150, +62, 0]: 7.596 dB
+Improvement: 1.241 dB better
+```
+
+### Build Status
+- **VST3: SUCCESS** - Installed to `C:\Program Files\Common Files\VST3\TRENCH.vst3`
+- **Standalone: LOCKED** - Existing process running
+
+### Error Summary (Final)
+
+| Iteration | Configuration | M100_Q100 Error |
+|-----------|---------------|-----------------|
+| 1 | Bandpass (wrong) | 14.84 dB (comparing to silence!) |
+| 1 | Peaking EQ, 12dB | 14.21 dB |
+| 2 | Validation bug fixed | 14.21 dB |
+| 3 | Q_scale=0.08, Gain=34dB | 8.84 dB |
+| **5** | **+ Frequency offsets** | **7.60 dB** |
+
+**Total improvement: 6.6 dB** (14.21 dB → 7.60 dB)
+
+### Remaining Error Analysis
+
+The ~7.6 dB remaining error comes from:
+
+1. **Lowpass stage interaction** - We don't apply offsets to lowpass stages
+2. **M100_Q100-specific calibration** - Offsets may differ at other morph positions
+3. **High-frequency rolloff** - X3 may have additional filtering we're not modeling
+4. **Saturation character** - X3's saturation curve differs from our tanh()
+
+### Next Steps (Iteration 6)
+
+1. **Test M0_Q100** - Verify if same offsets work or need different values
+2. **Morph-dependent offsets** - Interpolate offsets along with coefficients
+3. **Lowpass stage tuning** - Check if lowpass cutoff needs offset too
+4. **Listen test in DAW** - Compare perceptual quality to X3
+5. **Consider hybrid approach** - Store actual peak frequencies instead of a1 coefficients

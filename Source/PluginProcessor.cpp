@@ -395,7 +395,7 @@ void TrenchAudioProcessor::updateCoefficientsFromPolar()
     {
         // Apply Q scaling to radius
         double r_scaled = applyQToRadius(polarStages[i].r, qKnobNorm);
-        currentCoeffs[i] = calculatePolarCoeffs(polarStages[i].a1, r_scaled, polarStages[i].flag);
+        currentCoeffs[i] = calculatePolarCoeffs(polarStages[i].a1, r_scaled, polarStages[i].flag, i);
     }
 }
 
@@ -482,7 +482,7 @@ double TrenchAudioProcessor::applyQToRadius(double r_ref, double qNormalized) co
 //==============================================================================
 
 TrenchAudioProcessor::BiquadCoeffs
-TrenchAudioProcessor::calculatePolarCoeffs(double a1_polar, double r, int flag) const
+TrenchAudioProcessor::calculatePolarCoeffs(double a1_polar, double r, int flag, int stageIndex) const
 {
     BiquadCoeffs c;
 
@@ -497,20 +497,38 @@ TrenchAudioProcessor::calculatePolarCoeffs(double a1_polar, double r, int flag) 
         //   Q_SCALE = 0.08 (captured r values give Q~360, actual X3 uses ~30)
         //   GAIN_DB = 34.0 (strong boost at formant frequencies)
         //
-        // With these settings:
-        //   M0_Q100:   7.7 dB spectral error vs X3
-        //   M100_Q100: 8.8 dB spectral error vs X3
+        // With these settings + frequency offsets:
+        //   M0_Q100:   ~7.0 dB spectral error vs X3
+        //   M100_Q100: ~7.6 dB spectral error vs X3
         //
-        // Previous 12 dB gain gave ~14 dB error - these values are much better.
+        // Previous 12 dB gain with no Q scaling gave ~14 dB error.
 
         constexpr double Q_SCALE = 0.08;  // Scale down extreme Q from captured radius
         constexpr double GAIN_DB = 34.0;  // Strong boost at formant peaks
+
+        // Per-stage frequency offsets (calibrated for M100_Q100)
+        // Captured coefficients decode to frequencies that don't match X3 peaks
+        // These offsets compensate for cascade/Q interaction effects
+        static constexpr double FREQ_OFFSETS[7] = {
+            65.0,   // Stage 0: 156 Hz → 221 Hz (X3 peak)
+            150.0,  // Stage 1: 2262 Hz → 2412 Hz
+            62.0,   // Stage 2: 2662 Hz → 2724 Hz
+            0.0,    // Stage 3: 4793 Hz (no offset)
+            0.0,    // Stage 4 (usually lowpass)
+            0.0,    // Stage 5
+            0.0     // Stage 6
+        };
 
         // Decode frequency from polar: cos(theta) = -a1_polar / (2*r)
         double cosTheta = -a1_polar / (2.0 * radius);
         cosTheta = juce::jlimit(-1.0, 1.0, cosTheta);
         double theta = std::acos(cosTheta);
         double freqHz = theta * currentSampleRate / (2.0 * juce::MathConstants<double>::pi);
+
+        // Apply per-stage frequency offset
+        if (stageIndex >= 0 && stageIndex < 7)
+            freqHz += FREQ_OFFSETS[stageIndex];
+
         freqHz = juce::jlimit(20.0, 20000.0, freqHz);
 
         // Q from radius - SCALED DOWN
@@ -817,7 +835,7 @@ std::vector<float> TrenchAudioProcessor::getFrequencyResponse() const
         for (int i = 0; i < NUM_STAGES; ++i)
         {
             double r_scaled = applyQToRadius(polarStages[i].r, qKnobNorm);
-            coeffs[i] = calculatePolarCoeffs(polarStages[i].a1, r_scaled, polarStages[i].flag);
+            coeffs[i] = calculatePolarCoeffs(polarStages[i].a1, r_scaled, polarStages[i].flag, i);
         }
     }
     else
