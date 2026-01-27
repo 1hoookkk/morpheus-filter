@@ -29,6 +29,7 @@ TrenchAudioProcessor::TrenchAudioProcessor()
     }
     catch (const std::exception& e)
     {
+        (void)e;  // Suppress warning when DBG is disabled
         DBG("TRENCH: Failed to initialize presets: " << e.what());
         // Continue with empty presets - plugin will still load
     }
@@ -85,10 +86,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout TrenchAudioProcessor::create
 // SEMITONE CONVERSION (Required for musical interpolation)
 //==============================================================================
 
-static double hzToSemi(double hz)
-{
-    return 12.0 * std::log2(hz / 440.0) + 69.0;  // A440 = semitone 69
-}
+// Unused but kept for future reference
+// static double hzToSemi(double hz)
+// {
+//     return 12.0 * std::log2(hz / 440.0) + 69.0;  // A440 = semitone 69
+// }
 
 static double semiToHz(double semi)
 {
