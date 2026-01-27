@@ -1,67 +1,88 @@
-# Morpheus Filter
+# TRENCH
 
 ## What This Is
 
-A VST3 audio plugin that recreates E-mu's formant filter technology using extracted coefficient data. No branding or historical references — just a tasteful, musical filter with a simple two-knob interface and real-time frequency visualization.
+TRENCH is a VST3 filter effect plugin for Windows that recreates the E-mu Z-Plane filter sound. V1 ships a single preset ("Talking Hedz") that is sonically indistinguishable from Emulator X3's implementation. No Z-Plane branding — clean IP with original patent.
 
 ## Core Value
 
-**1:1 accuracy with Talking Hedz cartridge.** If it doesn't match the EmulatorX3 reference files, it's wrong.
+**The sound must be 1:1 with Emulator X3.** A/B blind test must pass. If the filter doesn't sound identical, nothing else matters.
 
 ## Requirements
 
 ### Validated
 
-(None yet — ship to validate)
+- [x] JUCE 8.0.1 plugin framework configured — existing
+- [x] CMake build system with VST3/Standalone targets — existing
+- [x] 7-stage cascaded biquad architecture defined — existing
+- [x] Parameter management via APVTS — existing
+- [x] WavCubeLoader for coefficient data — existing
+- [x] Python validation tooling structure — existing
 
 ### Active
 
-- [ ] Grid-based filter engine using extracted 17×17×3 data
-- [ ] Morph parameter (0-100%) sweeping filter configurations
-- [ ] Q parameter (0-100%) interpolating between 3 variants
-- [ ] Cascade topology with 7 biquad stages
-- [ ] Mix control (wet/dry blend)
-- [ ] Preset selector for cartridge selection
-- [ ] Frequency response visualizer matching X3 style
-- [ ] VST3 plugin wrapper
+- [ ] Plugin loads successfully in DAW
+- [ ] DSP engine processes audio through biquad cascade
+- [ ] Talking Hedz coefficients captured from X3 (all morph/Q combinations)
+- [ ] v-space interpolation for smooth morphing
+- [ ] Morph control (0-100%: Ah → Ee transition)
+- [ ] Q control (0-100%: flat → resonant)
+- [ ] FFT peaks match X3 reference within tolerance
+- [ ] Ear test confirms sonic match
+- [ ] Custom TRENCH GUI design (user to provide direction)
 
 ### Out of Scope
 
-- E-mu/Z-Plane branding or historical references — clean slate
-- Transform parameter — not needed for Talking Hedz
-- Multiple simultaneous cartridges — one at a time
-- MIDI learn / automation mapping — v2
-- Additional cartridge extraction — Talking Hedz only for v1
+- macOS/Linux builds — Windows only for v1
+- Multiple filter presets — Talking Hedz only for v1
+- AU format — VST3 only for v1
+- Z-Plane branding — clean IP, own patent
+- Formula reverse-engineering — capture approach for 1:1 accuracy
 
 ## Context
 
-**Technical Foundation:**
-- Extracted data: `talking_hedz_extracted.json` (374KB, complete 17×17×3 grid)
-- Source: EmulatorX.dll reverse-engineered via Cheat Engine + Python extraction
-- Reference files: `hedz - m100q0.wav`, `hedz - 5050.wav`, etc.
+**Technical Background:**
+- E-mu Z-Plane is a 6-stage morphing resonant filter from Morpheus/UltraProteus hardware
+- Emulator X3 (software) implemented a 6-stage version, slightly "fizzier" than hardware
+- Original used "ARMAdillo" coordinate system for coefficient interpolation
+- Direct coefficient interpolation causes pitch wobble; v-space (log domain) required
 
-**Key Discovery (2026-01-18):**
-Q mechanism is NOT radius scaling — it's complete configuration interpolation. At Q=0%, resonant stages are pushed to ultrasonic frequencies (30-95kHz), effectively bypassing them. At Q=100%, stages are at audible formant frequencies.
+**Current Codebase State:**
+- Plugin builds but doesn't load in DAW (as of last test)
+- Architecture: Processor-Editor MVC, 7-stage biquad cascade
+- DSP uses Direct Form II Transposed (CLAUDE.md recommends DF-I for morphing)
+- TrenchFilter.h exists but disabled
+- v-space interpolation documented but not implemented
+- Reference audio exists in validation/ folder
 
-**Validation Approach:**
-Compare plugin output against EmulatorX3 reference recordings using FFT analysis. Target: <3dB RMS error across frequency bands.
+**Coefficient Capture:**
+- Memory at X3 address contains final cooked biquad coefficients
+- 5 stages, 12 bytes each: [a1: float][radius: float][flag: float]
+- Validated captures exist for M0_Q100, M100_Q100, M100_Q0
+- Full morph sweep capture possible via tools/ripper.py
+
+**Validation Reference:**
+- validation/bypassed-pinknoise.wav — dry reference
+- validation/hedzmorph0q100.wav — X3 M0_Q100
+- validation/hedzmorph100q100.wav — X3 M100_Q100
+- validation/hedzmorph100q0.wav — X3 M100_Q0
 
 ## Constraints
 
-- **Framework**: JUCE 8.0.10 — CMake-based build, juce_dsp module for IIR filters
-- **Format**: VST3 primary, AU secondary
-- **Sample Rate**: Must handle 44.1kHz (captured rate) and 48kHz/96kHz with proper warping
-- **Latency**: Zero latency (IIR filters are sample-by-sample)
-- **Data Source**: `talking_hedz_extracted.json` is the single source of truth
+- **Platform:** Windows 10/11 only for v1
+- **Format:** VST3 plugin (production-ready for DAW use)
+- **Accuracy:** Sonically indistinguishable from Emulator X3
+- **Validation:** FFT comparison + ear test against reference recordings
+- **IP:** No Z-Plane terminology in product — own patent filing
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Cascade topology | E-mu patents + documentation confirm series, not parallel | — Pending |
-| Grid interpolation for Q | Extracted data shows Q=0% pushes stages ultrasonic, not radius scaling | — Pending |
-| JUCE framework | Cross-platform, proven for audio plugins | — Pending |
-| Diagonal morph traversal | Transform fixed at 0 for Talking Hedz simplicity | — Pending |
+| Coefficient capture over formula derivation | 1:1 accuracy guaranteed, formulas proved complex | — Pending |
+| v-space interpolation | Direct coefficient interp causes pitch wobble | — Pending |
+| Windows-only v1 | Simplify scope, validate sound first | — Pending |
+| Single preset (Talking Hedz) | Prove the approach before expanding | — Pending |
 
 ---
-*Last updated: 2026-01-18 after project initialization*
+*Last updated: 2026-01-27 after initialization*
