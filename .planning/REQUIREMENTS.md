@@ -1,98 +1,161 @@
-# Requirements: Morpheus Filter
+# Requirements: TRENCH
 
-**Defined:** 2026-01-18
-**Core Value:** 1:1 accuracy with Talking Hedz cartridge
+**Defined:** 2026-01-27
+**Core Value:** The sound must be 1:1 with Emulator X3
 
 ## v1 Requirements
 
+Requirements for initial release. Each maps to roadmap phases.
+
+### Build
+
+- [ ] **BUILD-01**: Plugin compiles without errors on Windows
+- [ ] **BUILD-02**: VST3 loads successfully in DAW (tested in at least one host)
+- [ ] **BUILD-03**: Standalone app launches and runs
+
 ### DSP Engine
 
-- [ ] **DSP-01**: Filter engine loads 17×17×3 grid data from JSON cartridge files
-- [ ] **DSP-02**: Morph parameter (0-100%) indexes X-axis of grid with linear interpolation
-- [ ] **DSP-03**: Q parameter (0-100%) interpolates between 3 variants (0%, 50%, 100%)
-- [ ] **DSP-04**: Each stage computes biquad coefficients from grid freq/radius/gain
-- [ ] **DSP-05**: 7-stage cascade topology processes signal sequentially
-- [ ] **DSP-06**: Stages with ultrasonic frequencies (>20kHz) pass signal unchanged
-- [ ] **DSP-07**: Sample rate warping for 48kHz/96kHz (captured at 44.1kHz)
-- [ ] **DSP-08**: Per-stage gain applied from grid data
+- [ ] **DSP-01**: Audio passes through plugin (bypass works)
+- [ ] **DSP-02**: 5-stage cascaded biquad filter processes audio
+- [ ] **DSP-03**: Direct Form I topology for stable morphing (NOT DF-II)
+- [ ] **DSP-04**: Denormal protection prevents CPU spikes
+- [ ] **DSP-05**: Control-rate coefficient updates (every 32-64 samples, not per-sample)
 
-### Plugin Interface
+### Coefficient System
 
-- [ ] **PLG-01**: VST3 plugin compiles and loads in DAW (Ableton, Reaper, FL Studio)
-- [ ] **PLG-02**: Morph parameter exposed and automatable
-- [ ] **PLG-03**: Q parameter exposed and automatable
-- [ ] **PLG-04**: Mix parameter (wet/dry blend) exposed and automatable
-- [ ] **PLG-05**: Preset selector dropdown for cartridge selection
-- [ ] **PLG-06**: State save/restore preserves all parameters
+- [ ] **COEF-01**: Talking Hedz coefficients captured from X3 memory
+- [ ] **COEF-02**: Full morph sweep captured (not just 3 keyframes)
+- [ ] **COEF-03**: Coefficients stored in v-space format
+- [ ] **COEF-04**: v-space to biquad decode implemented
+- [ ] **COEF-05**: Smooth interpolation across morph range
 
-### Visualizer
+### Function Generator
 
-- [ ] **VIS-01**: Frequency response curve displayed in real-time
-- [ ] **VIS-02**: Curve updates when Morph or Q changes
-- [ ] **VIS-03**: Visual style matches EmulatorX3 (gray background, cyan/green curve)
-- [ ] **VIS-04**: Frequency axis: 20Hz - 20kHz logarithmic
-- [ ] **VIS-05**: Amplitude axis: -24dB to +12dB
+- [ ] **FGEN-01**: 64-step level sequencer per Function Generator
+- [ ] **FGEN-02**: 64-step gate sequencer (trigger output)
+- [ ] **FGEN-03**: 3 independent Function Generator instances
+- [ ] **FGEN-04**: All playback modes (Forward, Reverse, Pendulum, Random, Brownian, One-Shot)
+- [ ] **FGEN-05**: Smooth interpolation option (linear between steps)
+- [ ] **FGEN-06**: Rate range 0.081 Hz to 18.147 Hz
+- [ ] **FGEN-07**: Brownian motion with boundary bounce
+- [ ] **FGEN-08**: Key sync (reset on note-on)
+- [ ] **FGEN-09**: Grid quantization (Major, Minor, Chromatic, Octaves)
+
+### Modulation Routing
+
+- [ ] **MOD-01**: Function Generator to Morph modulation
+- [ ] **MOD-02**: Function Generator to Q modulation
+- [ ] **MOD-03**: Rate modulation input (exponential: Rate × 2^ModAmount)
+- [ ] **MOD-04**: Length modulation (EndStep adjustment with wraparound)
+- [ ] **MOD-05**: Direction modulation override
+
+### Controls
+
+- [ ] **CTRL-01**: Morph parameter (0-100%) controls Ah to Ee transition
+- [ ] **CTRL-02**: Q parameter (0-100%) controls resonance amount
+- [ ] **CTRL-03**: Parameters persist when DAW saves/loads project
 
 ### Validation
 
-- [ ] **VAL-01**: Output matches reference file "hedz - m100q0.wav" within 3dB RMS error
-- [ ] **VAL-02**: Output matches reference file "hedz - 5050.wav" within 3dB RMS error
-- [ ] **VAL-03**: Morph sweep produces audible vowel-like formant changes
-- [ ] **VAL-04**: Q=0% produces flatter response than Q=100%
+- [ ] **VAL-01**: FFT peaks match X3 reference at M0_Q100 (within ±10%)
+- [ ] **VAL-02**: FFT peaks match X3 reference at M100_Q100 (within ±10%)
+- [ ] **VAL-03**: FFT peaks match X3 reference at M100_Q0 (within ±10%)
+- [ ] **VAL-04**: Ear test confirms sonic match (A/B blind)
+
+### GUI
+
+- [ ] **GUI-01**: Custom TRENCH visual design (user provides direction)
+- [ ] **GUI-02**: Morph knob/slider functional
+- [ ] **GUI-03**: Q knob/slider functional
+- [ ] **GUI-04**: Responsive UI updates with parameter changes
 
 ## v2 Requirements
 
-### Extended Features
+Deferred to future release. Tracked but not in current roadmap.
 
-- **EXT-01**: Additional cartridge support (Bass-O-Matic, DJ Alkaline, etc.)
-- **EXT-02**: MIDI learn for parameter control
-- **EXT-03**: Resizable UI
-- **EXT-04**: AU plugin format
-- **EXT-05**: Cartridge import from EmulatorX.dll
+### Additional Presets
+
+- **PRESET-01**: Additional Z-Plane filter presets captured (Phaser, Choir, etc.)
+- **PRESET-02**: Preset browser/selector UI
+- **PRESET-03**: 10-15 essential filters from Morpheus collection
+
+### Platform Expansion
+
+- **PLAT-01**: macOS build (Intel + Apple Silicon)
+- **PLAT-02**: AU format support
+- **PLAT-03**: Linux build
+
+### Advanced Features
+
+- **ADV-01**: Phantom 7th stage (hardware warmth)
+- **ADV-02**: Drive/saturation control
+- **ADV-03**: Wet/dry mix control
+- **ADV-04**: Output gain control
+- **ADV-05**: 6-Stage Envelope Generator
 
 ## Out of Scope
 
+Explicitly excluded. Documented to prevent scope creep.
+
 | Feature | Reason |
 |---------|--------|
-| E-mu/Z-Plane branding | Clean slate design, no historical references |
-| Transform parameter | Not needed for Talking Hedz, fixed at 0 |
-| Real-time cartridge extraction | Complex, v2+ feature |
-| Polyphonic operation | Single filter instance is sufficient |
-| CLAP format | VST3 covers primary use cases |
+| Z-Plane branding | Clean IP, own patent filing |
+| Formula reverse-engineering | Coefficient capture is more accurate |
+| Multiple presets in v1 | Prove approach with one preset first |
+| macOS/Linux in v1 | Windows-only simplifies validation |
+| Phantom stage | v2 feature, focus on X3 match first |
+| Ripper tools in plugin | Keep external Python tools separate, avoid AV triggers |
 
 ## Traceability
 
+Which phases cover which requirements. Updated during roadmap creation.
+
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DSP-01 | Phase 1 | Pending |
-| DSP-02 | Phase 1 | Pending |
-| DSP-03 | Phase 1 | Pending |
-| DSP-04 | Phase 1 | Pending |
-| DSP-05 | Phase 1 | Pending |
-| DSP-06 | Phase 1 | Pending |
-| DSP-07 | Phase 1 | Pending |
-| DSP-08 | Phase 1 | Pending |
-| VAL-01 | Phase 1 | Pending |
-| VAL-02 | Phase 1 | Pending |
-| VAL-03 | Phase 1 | Pending |
-| VAL-04 | Phase 1 | Pending |
-| PLG-01 | Phase 2 | Pending |
-| PLG-02 | Phase 2 | Pending |
-| PLG-03 | Phase 2 | Pending |
-| PLG-04 | Phase 2 | Pending |
-| PLG-05 | Phase 2 | Pending |
-| PLG-06 | Phase 2 | Pending |
-| VIS-01 | Phase 3 | Pending |
-| VIS-02 | Phase 3 | Pending |
-| VIS-03 | Phase 3 | Pending |
-| VIS-04 | Phase 3 | Pending |
-| VIS-05 | Phase 3 | Pending |
+| BUILD-01 | Phase 1 | Pending |
+| BUILD-02 | Phase 1 | Pending |
+| BUILD-03 | Phase 1 | Pending |
+| DSP-01 | Phase 2 | Pending |
+| DSP-02 | Phase 2 | Pending |
+| DSP-03 | Phase 2 | Pending |
+| DSP-04 | Phase 2 | Pending |
+| DSP-05 | Phase 2 | Pending |
+| COEF-01 | Phase 3 | Pending |
+| COEF-02 | Phase 3 | Pending |
+| COEF-03 | Phase 4 | Pending |
+| COEF-04 | Phase 4 | Pending |
+| COEF-05 | Phase 4 | Pending |
+| FGEN-01 | Phase 5 | Pending |
+| FGEN-02 | Phase 5 | Pending |
+| FGEN-03 | Phase 5 | Pending |
+| FGEN-04 | Phase 5 | Pending |
+| FGEN-05 | Phase 5 | Pending |
+| FGEN-06 | Phase 5 | Pending |
+| FGEN-07 | Phase 5 | Pending |
+| FGEN-08 | Phase 5 | Pending |
+| FGEN-09 | Phase 5 | Pending |
+| MOD-01 | Phase 6 | Pending |
+| MOD-02 | Phase 6 | Pending |
+| MOD-03 | Phase 6 | Pending |
+| MOD-04 | Phase 6 | Pending |
+| MOD-05 | Phase 6 | Pending |
+| CTRL-01 | Phase 7 | Pending |
+| CTRL-02 | Phase 7 | Pending |
+| CTRL-03 | Phase 7 | Pending |
+| VAL-01 | Phase 8 | Pending |
+| VAL-02 | Phase 8 | Pending |
+| VAL-03 | Phase 8 | Pending |
+| VAL-04 | Phase 8 | Pending |
+| GUI-01 | Phase 9 | Pending |
+| GUI-02 | Phase 9 | Pending |
+| GUI-03 | Phase 9 | Pending |
+| GUI-04 | Phase 9 | Pending |
 
 **Coverage:**
-- v1 requirements: 21 total
-- Mapped to phases: 21
-- Unmapped: 0 ✓
+- v1 requirements: 36 total
+- Mapped to phases: 36
+- Unmapped: 0
 
 ---
-*Requirements defined: 2026-01-18*
-*Last updated: 2026-01-18 after initial definition*
+*Requirements defined: 2026-01-27*
+*Last updated: 2026-01-27 after Function Generator scope expansion*
