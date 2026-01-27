@@ -1,0 +1,138 @@
+{
+  "name": "Talking Hedz",
+  "source": "Emulator X3",
+  "captureDate": "2026-01-26",
+  "validated": true,
+  "architecture": {
+    "stages": 5,
+    "topology": "cascade",
+    "sampleRate": 44100,
+    "stageSize": 12,
+    "format": ["a1:float32", "radius:float32", "flag:float32"]
+  },
+  "memoryLayout": {
+    "liveAddress": "0x0056E450",
+    "staticAddress": "0x0056D4F4",
+    "preDecodeAddress": "0x0056D4A0",
+    "note": "Addresses shift on X3 restart"
+  },
+  "keyframes": [
+    {
+      "label": "M0_Q100",
+      "morph": 0.0,
+      "q": 1.0,
+      "audioFile": "hedzmorph0q100.wav",
+      "audioRMS_dB": -19.8,
+      "audioPeaks_Hz": [177.6, 1076.7, 1701.1, 2497.9, 4915.0],
+      "audioPeaks_dB": [23.0, 17.1, 14.9, 5.9, -3.4],
+      "stages": [
+        {"stage": 0, "a1": -1.976510, "r": 0.998242, "flag": 1.0, "freqHz": 993.7, "Q": 282},
+        {"stage": 1, "a1": -1.938977, "r": 0.998296, "flag": 1.0, "freqHz": 1690.2, "Q": 292},
+        {"stage": 2, "a1": -1.872895, "r": 0.998353, "flag": 1.0, "freqHz": 2484.7, "Q": 303},
+        {"stage": 3, "a1": -1.523842, "r": 0.992409, "flag": 1.0, "freqHz": 4881.4, "Q": 66},
+        {"stage": 4, "a1": -1.997572, "r": 0.998289, "flag": 0.0, "freqHz": 0.0, "Q": 292}
+      ],
+      "validation": {
+        "S0_error": "8%",
+        "S1_error": "0.6%",
+        "S2_error": "0.5%",
+        "S3_error": "0.7%"
+      }
+    },
+    {
+      "label": "M100_Q100",
+      "morph": 1.0,
+      "q": 1.0,
+      "audioFile": "hedzmorph100q100.wav",
+      "audioRMS_dB": -19.3,
+      "audioPeaks_Hz": [220.7, 2417.1, 2718.6, 10147.5, 1701.1],
+      "audioPeaks_dB": [26.3, 21.4, 19.4, 20.0, 10.0],
+      "stages": [
+        {"stage": 0, "a1": -1.996743, "r": 0.998619, "flag": 1.0, "freqHz": 156.1, "Q": 362},
+        {"stage": 1, "a1": -1.894098, "r": 0.998437, "flag": 1.0, "freqHz": 2261.7, "Q": 320},
+        {"stage": 2, "a1": -1.854829, "r": 0.998353, "flag": 1.0, "freqHz": 2661.8, "Q": 303},
+        {"stage": 3, "a1": -1.495171, "r": 0.963737, "flag": 1.0, "freqHz": 4793.4, "Q": 14},
+        {"stage": 4, "a1": -1.974292, "r": 0.998195, "flag": 0.0, "freqHz": 1045.3, "Q": 277}
+      ],
+      "validation": {
+        "S1_error": "6%",
+        "S2_error": "2%",
+        "note": "10147 Hz peak not predicted by any stage"
+      }
+    },
+    {
+      "label": "M100_Q0",
+      "morph": 1.0,
+      "q": 0.0,
+      "audioFile": "hedzmorph100q0.wav",
+      "audioRMS_dB": -25.9,
+      "audioPeaks_Hz": [215.3, 2024.1, 2680.9],
+      "audioPeaks_dB": [6.4, 4.3, -1.0],
+      "stages": [
+        {"stage": 0, "a1": -1.986418, "r": 0.987503, "flag": 1.0, "freqHz": 0.0, "Q": 40},
+        {"stage": 1, "a1": -1.837391, "r": 0.974537, "flag": 1.0, "freqHz": 2387.5, "Q": 19},
+        {"stage": 2, "a1": -1.794609, "r": 0.977806, "flag": 1.0, "freqHz": 2868.0, "Q": 22},
+        {"stage": 3, "a1": -1.362762, "r": 0.883514, "flag": 1.0, "freqHz": 4843.2, "Q": 4},
+        {"stage": 4, "a1": -1.914935, "r": 0.993960, "flag": 0.0, "freqHz": 1907.8, "Q": 82}
+      ],
+      "validation": {
+        "S1_error": "11%",
+        "S2_error": "7%",
+        "S4_error": "6%"
+      }
+    }
+  ],
+  "preDecodeBlock": {
+    "address": "0x0056D4A0",
+    "status": "UNVALIDATED",
+    "note": "Purpose unknown - may be v-domain, gain, or numerator data",
+    "data": [
+      {"offset": 0, "val1": -0.943078, "val2": 0.465545, "val3": 0.511475},
+      {"offset": 12, "val1": -0.980522, "val2": 0.477533, "val3": 0.511475},
+      {"offset": 24, "val1": -0.859188, "val2": 0.403632, "val3": 0.511475},
+      {"offset": 36, "val1": -0.885161, "val2": 0.457553, "val3": 0.511475},
+      {"offset": 48, "val1": -0.415885, "val2": 0.207911, "val3": 0.511475},
+      {"offset": 60, "val1": 0.958517, "val2": 0.511473, "val3": 0.000000}
+    ]
+  },
+  "vDomainComputed": {
+    "note": "Reverse-engineered from coefficients using ARMAdillo formulas",
+    "M0_Q100": [
+      {"stage": 0, "v1": 7.65, "v2": 8.15},
+      {"stage": 1, "v1": 6.12, "v2": 8.20},
+      {"stage": 2, "v1": 5.01, "v2": 8.25},
+      {"stage": 3, "v1": 3.12, "v2": 6.05},
+      {"stage": 4, "v1": 30.00, "v2": 8.19}
+    ],
+    "M100_Q100": [
+      {"stage": 0, "v1": 12.97, "v2": 8.50},
+      {"stage": 1, "v1": 5.28, "v2": 8.32},
+      {"stage": 2, "v1": 4.82, "v2": 8.25},
+      {"stage": 3, "v1": 3.21, "v2": 3.81},
+      {"stage": 4, "v1": 7.50, "v2": 8.12}
+    ]
+  },
+  "qBehavior": {
+    "note": "Q knob scales radius uniformly - higher Q = higher radius = sharper peaks",
+    "comparison": {
+      "S0": {"r_Q100": 0.998619, "r_Q0": 0.987503, "delta": -0.0111},
+      "S1": {"r_Q100": 0.998437, "r_Q0": 0.974537, "delta": -0.0239},
+      "S2": {"r_Q100": 0.998353, "r_Q0": 0.977806, "delta": -0.0205},
+      "S3": {"r_Q100": 0.963737, "r_Q0": 0.883514, "delta": -0.0802},
+      "S4": {"r_Q100": 0.998195, "r_Q0": 0.993960, "delta": -0.0042}
+    }
+  },
+  "stageTypes": {
+    "flag1": {
+      "type": "resonator",
+      "behavior": "Creates peak at pole frequency",
+      "constraint": "Must be unity gain away from resonance",
+      "numerator": "UNKNOWN - main implementation challenge"
+    },
+    "flag0": {
+      "type": "lowpass",
+      "behavior": "Provides low-frequency body, no sharp peak",
+      "numerator": "b0=(1+a1+a2)/4, b1=2*b0, b2=b0"
+    }
+  }
+}
