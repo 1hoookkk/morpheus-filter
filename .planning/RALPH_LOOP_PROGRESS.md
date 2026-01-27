@@ -494,8 +494,66 @@ Suggested test:
 
 ### Ralph Loop Status
 
-- **Iterations completed:** 8
+- **Iterations completed:** 9
 - **Total error reduction:** 14.21 dB → 7.60 dB (46% improvement)
 - **DSP parameters:** Validated and documented
 - **Build:** Successful, installed
 - **Documentation:** Updated for handoff
+
+---
+
+## Iteration 9 - MORPH-DEPENDENT OFFSET INTERPOLATION
+
+### Discovery
+
+Analysis of optimal offsets at M0 vs M100 revealed:
+
+| Position | Best Offsets | Error |
+|----------|--------------|-------|
+| M0_Q100 | [0, 0, 0, 0] | 7.74 dB |
+| M100_Q100 | [65, 150, 62, 0] | 7.60 dB |
+
+Key insight: M0 needs NO offsets! M100 needs full offsets. Linear interpolation works between them.
+
+### Implementation
+
+Added `morph` parameter to `calculatePolarCoeffs()`:
+
+```cpp
+// Offsets scale linearly with morph
+// M0 = zero offsets, M100 = full offsets
+freqHz += morph * FREQ_OFFSETS[stageIndex];
+```
+
+Call sites updated to pass `morphNorm`:
+- `updateCoefficientsFromPolar()` line 398
+- `getFrequencyResponse()` line 839
+
+### Validation
+
+```
+Morph    Offsets                        Decoded Frequencies
+    0%   [0, 0, 0, 0]                   994, 1690, 2485, 4881 Hz
+   50%   [32, 75, 31, 0]                743, 2071, 2606, 4838 Hz
+  100%   [65, 150, 62, 0]               221, 2412, 2724, 4793 Hz
+```
+
+Frequencies now transition smoothly from "Ah" to "Ee" vowels.
+
+### Build Status
+
+**VST3 INSTALLED:** `C:\Program Files\Common Files\VST3\TRENCH.vst3`
+
+### Commits
+
+| Commit | Description |
+|--------|-------------|
+| `docs: update session handoff with Ralph Loop results` | SESSION_HANDOFF.md + iteration 8 |
+| `feat(dsp): implement morph-dependent frequency offset interpolation` | Morph-scaled offsets |
+
+### Next Steps (Iteration 10)
+
+1. **Perceptual testing** - Load VST3 in DAW, compare to X3
+2. **Q-axis offset dependency** - Check if offsets need Q scaling too
+3. **Additional presets** - Capture Meaty Gizmo, Radio Craze
+4. **Saturation curve** - Compare tanh() to X3's actual behavior
