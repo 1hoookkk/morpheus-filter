@@ -21,6 +21,7 @@ TrenchAudioProcessor::TrenchAudioProcessor()
     mixParam = apvts.getRawParameterValue("mix");
     outputParam = apvts.getRawParameterValue("output");
     bypassParam = apvts.getRawParameterValue("bypass");
+    testParam = apvts.getRawParameterValue("test");
 
     try
     {
@@ -73,6 +74,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout TrenchAudioProcessor::create
 
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID("bypass", 1), "Bypass", false));
+
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID("test", 1), "Test Tone", false));
 
     return { params.begin(), params.end() };
 }
@@ -473,7 +477,7 @@ double TrenchAudioProcessor::applyQToRadius(double r_ref, double qNormalized) co
 //==============================================================================
 // POLAR TO BIQUAD COEFFICIENT CALCULATION
 // Uses flag to determine numerator type:
-//   flag=1: Bandpass (zeros at DC and Nyquist)
+//   flag=1: PEAKING EQ (boost at resonance, pass everything else)
 //   flag=0: Lowpass (unity DC gain)
 //==============================================================================
 
@@ -485,27 +489,47 @@ TrenchAudioProcessor::calculatePolarCoeffs(double a1_polar, double r, int flag) 
     // Clamp radius for stability
     double radius = std::min(r, 0.9999);
 
-    // NOW multiply a1 by radius (critical step!)
-    c.a1 = a1_polar * radius;
-    c.a2 = radius * radius;
-
     if (flag == 1)
     {
-        // BANDPASS: zeros at DC (z=1) and Nyquist (z=-1)
-        // H(z) numerator = (1 - z^-2) scaled
-        double scale = (1.0 - c.a2) * 0.5;
+        // CONSTANT PEAK GAIN BANDPASS (E-mu Z-Plane resonator)
+        //
+        // This is the E-mu formula - NOT RBJ peaking EQ!
+        // - Zeros at DC (z=1) and Nyquist (z=-1) create bandpass character
+        // - Peak gain normalized to unity regardless of Q
+        // - Matches X3 spectral character better than parametric EQ
+        //
+        // Python validation (tools/match_x3.py) shows this formula has
+        // lowest RMS error (14.84 dB) vs RBJ peaking (17-19 dB).
+
+        // Denominator: poles at r*e^(±jθ) where a1_polar encodes the angle
+        // Note: a1_polar format is -2*r*cos(θ), multiply by r for final coeff
+        double a1_final = a1_polar * radius;
+        double a2 = radius * radius;
+
+        // Numerator: zeros at DC and Nyquist for bandpass character
+        // Scale factor normalizes peak gain to ~1.0
+        double scale = 1.0 - radius;  // Constant peak gain normalization
+
         c.b0 = scale;
         c.b1 = 0.0;
         c.b2 = -scale;
+        c.a1 = a1_final;
+        c.a2 = a2;
     }
     else
     {
-        // LOWPASS: unity DC gain
-        // H(z) numerator = (1 + z^-1)^2 scaled
-        double norm = (1.0 + c.a1 + c.a2) * 0.25;
+        // LOWPASS: Apply same a1*r formula as resonator for consistency
+        // (Python test uses this for both stage types)
+        double a1_lp = a1_polar * radius;
+        double a2_lp = radius * radius;
+
+        // Unity DC gain numerator (standard 2-pole lowpass)
+        double norm = (1.0 + a1_lp + a2_lp) * 0.25;
         c.b0 = norm;
         c.b1 = 2.0 * norm;
         c.b2 = norm;
+        c.a1 = a1_lp;
+        c.a2 = a2_lp;
     }
 
     return c;
@@ -662,6 +686,7 @@ void TrenchAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     // Get parameter values
     const bool bypassed = bypassParam->load() > 0.5f;
+    const bool testMode = testParam->load() > 0.5f;
     const float driveAmount = driveParam->load() / 100.0f;  // 0-1
     const float mixAmount = mixParam->load() / 100.0f;      // 0-1
     const float outputGain = std::pow(10.0f, outputParam->load() / 20.0f);  // dB to linear
@@ -671,6 +696,28 @@ void TrenchAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     {
         buffer.applyGain(outputGain);
         return;
+    }
+
+    // TEST MODE: Generate raw saw wave directly, bypass all processing
+    if (testMode)
+    {
+        const double phaseInc = 220.0 / currentSampleRate;  // 220Hz saw
+
+        for (int s = 0; s < numSamples; ++s)
+        {
+            testPhase += phaseInc;
+            if (testPhase >= 1.0)
+                testPhase -= 1.0;
+
+            // Saw wave: -1 to +1 ramp
+            float saw = static_cast<float>(testPhase * 2.0 - 1.0) * 0.5f;
+
+            for (int ch = 0; ch < numChannels; ++ch)
+            {
+                buffer.getWritePointer(ch)[s] = saw;
+            }
+        }
+        return;  // Skip all filter processing in test mode
     }
 
     // Process using biquad cascade (cube/polar mode)
@@ -690,9 +737,11 @@ void TrenchAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
             auto& states = (ch == 0) ? biquadStatesL : biquadStatesR;
 
             double dry = channelData[s];
-            double x = dry;
 
-            // Apply drive (soft saturation before filter)
+            // 1. GAIN STAGING: -7dB input attenuation (X3 headroom)
+            double x = dry * 0.446;
+
+            // 2. OPTIONAL DRIVE (soft saturation before filter)
             if (driveAmount > 0.0f)
             {
                 double driveGain = 1.0 + driveAmount * 15.0;  // Up to 16x gain
@@ -700,7 +749,7 @@ void TrenchAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                 x = std::tanh(x);  // Soft clip
             }
 
-            // 7-stage cascade (14-pole Z-Plane filter)
+            // 3. Z-PLANE CASCADE (7 stages = 14 poles)
             for (int stage = 0; stage < NUM_STAGES; ++stage)
             {
                 const auto& c = currentCoeffs[stage];
@@ -712,6 +761,13 @@ void TrenchAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                 st.z2 = c.b2 * x - c.a2 * y;
                 x = y;
             }
+
+            // 4. POST-FILTER SATURATION (E-mu character, catch resonant peaks)
+            // Soft clip at ±2.0 to match H-chip bit-width limits
+            x = std::tanh(x * 0.5) * 2.0;
+
+            // 5. MAKEUP GAIN (compensate for -7dB input + saturation)
+            x *= 2.24;  // +7dB to restore nominal level
 
             // Wet/dry mix
             double wet = x;
