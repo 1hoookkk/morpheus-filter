@@ -1,112 +1,133 @@
-# Project State: Morpheus Filter
+# STATE: TRENCH
 
-**Last updated:** 2026-01-19
-**Current phase:** Phase 1 (DSP Engine) — COMPLETE
+Project memory for Claude continuity across sessions.
 
 ## Project Reference
 
-See: `.planning/PROJECT.md` (updated 2026-01-18)
+**Core Value:** The sound must be 1:1 with Emulator X3
 
-**Core value:** 1:1 accuracy with Talking Hedz cartridge
-**Current focus:** Phase 2 — GUI (pending)
+**Current Focus:** Phase 1 - Build Foundation
 
-## Progress
+**Key Files:**
+- `.planning/PROJECT.md` - Project definition and constraints
+- `.planning/REQUIREMENTS.md` - v1 requirements with traceability
+- `.planning/ROADMAP.md` - Phase structure and success criteria
+- `CLAUDE.md` - Technical spec (ARMAdillo, v-space, coefficient capture)
+- `Source/PluginProcessor.cpp` - Main audio processing
+- `Source/DSP/` - DSP components directory
 
-| Phase | Status | Plans | Progress |
-|-------|--------|-------|----------|
-| 1 | COMPLETE | 4/4 | 100% |
-| 2 | Pending | 0/? | 0% |
-| 3 | Pending | 0/? | 0% |
+## Current Position
 
+**Phase:** 1 - Build Foundation
+**Plan:** 01-01 completed (Diagnostic)
+**Status:** In progress - ready for Plan 02
+
+**Progress:**
 ```
-Phase 1: [################] 100%
+Phase 1: [===.......] 33%  Build Foundation (1/3 plans)
+Phase 2: [..........] 0%   DSP Engine
+Phase 3: [..........] 0%   Coefficient Capture
+Phase 4: [..........] 0%   Interpolation System
+Phase 5: [..........] 0%   Function Generator
+Phase 6: [..........] 0%   Modulation Routing
+Phase 7: [..........] 0%   Controls Integration
+Phase 8: [..........] 0%   Validation
+Phase 9: [..........] 0%   GUI Design
 ```
 
-## Session Continuity
+**Overall:** 0/36 requirements complete (0%) - BUILD-01 partially validated
 
-**Last session:** 2026-01-19T07:07:35Z
-**Stopped at:** Completed 01-04-PLAN.md (Validation)
-**Resume file:** None - Phase 1 complete, Phase 2 not yet started
+## Phase 1 Context
 
-## Key Context
+**Goal:** Plugin loads successfully in a DAW and can pass audio.
 
-### Technical Breakthrough (2026-01-18)
+**Requirements:**
+- BUILD-01: Plugin compiles without errors on Windows
+- BUILD-02: VST3 loads successfully in DAW
+- BUILD-03: Standalone app launches and runs
 
-Q mechanism is **frequency interpolation**, not radius scaling:
-- Q=0%: Resonant stages pushed to ultrasonic (30-95kHz) -> bypassed
-- Q=100%: Stages at audible formant frequencies -> resonant peaks
-- Implementation: Trilinear interpolation between 3 complete variants
+**Success Criteria:**
+1. Plugin compiles with zero errors and zero warnings on Windows
+2. VST3 binary loads in at least one DAW without crashing
+3. Standalone app window opens and remains responsive
+4. Audio passes through the plugin unchanged when bypass/passthrough is active
 
-### Validation Results (2026-01-19)
+**Codebase State:**
+- JUCE 8.0.1 framework configured
+- CMake build system exists
+- Plugin builds but does not load in DAW (as of last test)
+- DSP architecture exists but may need fixes
 
-All 4 validation tests PASS:
-- VAL-01: Reference match (hedz - m100q0.wav) - PASS
-- VAL-02: Reference match (hedz - 5050.wav) - PASS
-- VAL-03: Morph sweep produces formant changes (31.1 semitones avg range) - PASS
-- VAL-04: Q=0% flatter than Q=100% (ultrasonic bypass working) - PASS
+## Performance Metrics
 
-**NOTE:** Formant frequency offset observed between reference captures and DSP output.
-This may indicate a tuning calibration issue or that reference files contain processed
-audio rather than impulse responses. Investigation recommended before Phase 3 (Accuracy).
+| Metric | Target | Current |
+|--------|--------|---------|
+| Build time | <60s | Unknown |
+| Plugin load time | <2s | Fails to load |
+| CPU usage (idle) | <1% | Unknown |
+| CPU usage (active) | <5% | Unknown |
 
-### Data Sources
+## Accumulated Context
 
-| File | Purpose | Location |
-|------|---------|----------|
-| `talking_hedz_extracted.json` | Complete 17x17x3 grid data | `C:\Users\hooki\yup\` |
-| `hedz - m100q0.wav` | Reference: Morph=100%, Q=0% | `C:\Users\hooki\yup\` |
-| `hedz - 5050.wav` | Reference: Morph=50%, Q=50% | `C:\Users\hooki\yup\` |
-| `EmulatorX.dll` | Source for extraction | `C:\Program Files (x86)\Creative Professional\Emulator X\` |
+### Key Decisions
 
-### Architecture Decision
+| Decision | Rationale | Date |
+|----------|-----------|------|
+| Coefficient capture over formula derivation | 1:1 accuracy guaranteed, formulas proved complex | 2026-01-27 |
+| v-space interpolation | Direct coefficient interp causes pitch wobble | 2026-01-27 |
+| Windows-only v1 | Simplify scope, validate sound first | 2026-01-27 |
+| Single preset (Talking Hedz) | Prove the approach before expanding | 2026-01-27 |
+| Direct Form I topology | Stable during coefficient morphing | 2026-01-27 |
+| Full Function Generator system | Required for 1:1 "talking" behavior | 2026-01-27 |
 
-**CASCADE topology confirmed** via:
-1. E-mu patents (US 5,170,369)
-2. NotebookLM analysis of Proteus X Manual
-3. Extracted data shows ultrasonic bypass at Q=0% (makes sense only with cascade)
+### Technical Discoveries
 
-## Accumulated Decisions
+- X3 uses 5-stage cascade (not 7 like Morpheus hardware)
+- Memory address for coefficients shifts on X3 restart
+- flag=0 is lowpass, flag=1 is resonator
+- 178 Hz peak in M0_Q100 comes from lowpass stage
+- Function Generator is 64-step sequencer, not standard LFO
+- Brownian mode bounces at boundaries
+- **Standalone builds correctly** when explicitly targeted (TRENCH_Standalone)
+- **VST3 bundle structure is valid** (6.9MB binary, moduleinfo.json present)
+- **Use TRENCH_All target** to build all formats at once
 
-| Plan | Decision | Rationale |
-|------|----------|-----------|
-| 01-01 | ZPlane namespace | Aligns with E-mu Z-Plane terminology |
-| 01-01 | freqSemitone storage | Critical for "Rossum sweep" logarithmic interpolation |
-| 01-01 | Shape field not interpolated | Discrete LP/EQ type preserved during blends |
-| 01-02 | Hz-to-semitone at load time | Performance: conversion once during JSON parse, not per-frame |
-| 01-02 | nlohmann/json single-header | Minimal dependency footprint, header-only integration |
-| 01-03 | DFII-T biquad form | Most numerically stable for high-Q resonant filters |
-| 01-03 | LP normalization: (1+a1+a2)/4 with 0.0001 floor | Prevents silence near DC (Pitfall 2) |
-| 01-03 | Nyquist bypass at 95% | Prevents aliasing artifacts at sample rate limits |
-| 01-04 | Python mirrors C++ exactly | Enables validation without C++ build step |
-| 01-04 | Formant analysis alongside RMS | More meaningful for filter matching |
+### TODOs
 
-## Key Files Created
+- [x] Diagnose why plugin fails to load in DAW - **Needs retest; structure is valid**
+- [x] Verify CMake configuration is correct - **CONFIRMED: targets exist, build works**
+- [ ] Install pluginval for automated VST3 validation
+- [ ] Test Standalone launch (verify window opens)
+- [ ] Test VST3 in DAW after pluginval passes
 
-| Plan | File | Purpose |
-|------|------|---------|
-| 01-01 | `Source/dsp/GridInterpolator.h` | ZPlane data structures and trilinear interpolation |
-| 01-02 | `Source/external/json.hpp` | nlohmann/json v3.11.3 for cartridge parsing |
-| 01-02 | `Source/dsp/CartridgeLoader.h` | JSON loader with Hz-to-semitone conversion |
-| 01-02 | `Tests/test_cartridge_load.cpp` | Cartridge loading verification test |
-| 01-03 | `Source/dsp/ZPlaneEngine.h` | 7-stage cascade filter with biquad processing |
-| 01-04 | `Tests/validate_against_reference.py` | Python validation suite with formant analysis |
-
-## Blockers
+### Blockers
 
 None currently.
 
-## Investigation Items
+## Session Continuity
 
-**Formant Frequency Offset** - Low priority, tracked for Phase 3 (Accuracy)
-- Observed in validation: formant frequencies differ between reference captures and DSP
-- Possible causes: reference not at C5 pitch, different tuning reference, processed audio vs impulse response
-- Recommendation: Capture new reference at known C5 pitch for direct comparison
+**Last Session:** 2026-01-27 (Plan 01-01 execution)
 
-## Next Action
+**What Happened:**
+- Executed Plan 01-01 (Diagnostic Plan)
+- Discovered pluginval is not installed
+- Confirmed Standalone builds successfully when explicitly targeted
+- Verified VST3 bundle structure is correct
+- Created diagnostic report with action items for Plan 02
 
-Begin Phase 2: GUI - Create `.planning/phases/02-gui/` and plan files.
+**What's Next:**
+1. Execute Plan 01-02 (Fix Issues) - install pluginval, test loading
+2. Test Standalone app launches and remains responsive
+3. Test VST3 in DAW after pluginval validation
+
+**Open Questions:**
+- What DAW should be primary test target? (FL Studio recommended in RESEARCH)
+- Does the "fails to load" issue still exist with fresh build?
+
+**Resolved Questions:**
+- Is JUCE 8.0.1 installed correctly? **YES** - builds complete successfully
+- Are there any CMake configuration issues? **NO** - all targets generate correctly
 
 ---
-
-*State initialized: 2026-01-18*
-*Last update: 2026-01-19 - Completed Phase 1 (DSP Engine) including Plan 01-04 (Validation)*
+*State initialized: 2026-01-27*
+*Last updated: 2026-01-27 after Plan 01-01 diagnostic completion*
