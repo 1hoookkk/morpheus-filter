@@ -430,3 +430,72 @@ Includes:
 2. **Morph-dependent offsets** - Interpolate offsets across morph range
 3. **Saturation tuning** - May improve perceived quality
 4. **Additional presets** - Capture Meaty Gizmo, Radio Craze, etc.
+
+---
+
+## Iteration 8 - SESSION HANDOFF & DOCUMENTATION
+
+### Documentation Updated
+
+1. **SESSION_HANDOFF.md** - Complete rewrite with:
+   - All 7 iteration accomplishments
+   - Validated DSP parameters (Q_SCALE, GAIN_DB, FREQ_OFFSETS)
+   - Current error analysis
+   - Clear next steps for user
+
+2. **RALPH_LOOP_PROGRESS.md** - Added iteration 8 summary
+
+### Current Project State
+
+```
+TRENCH VST3 Filter Emulation
+════════════════════════════════════════════════════════
+
+Status:           DSP ENGINE VALIDATED
+Spectral Error:   7.60 dB (M100_Q100 vs X3 reference)
+Build:            VST3 installed, Standalone locked
+
+Key Parameters:
+  Q_SCALE    = 0.08   (captured r~0.998 → Q~30)
+  GAIN_DB    = 34.0   (peaking boost)
+  FREQ_OFFS  = [+65, +150, +62, 0, 0, 0, 0] Hz
+
+7 cascaded biquads:
+  Stages 0-3: RBJ Peaking EQ (flag=1)
+  Stages 4-6: RBJ Lowpass (flag=0)
+```
+
+### Files Committed This Session
+
+| Commit | Description |
+|--------|-------------|
+| `fix(dsp): add per-stage frequency offsets` | FREQ_OFFSETS in calculatePolarCoeffs |
+| `tools: add lowpass analysis and morph sweep tests` | analyze_lowpass.py, test_morph_sweep.py |
+| `docs: update CLAUDE.md with validated DSP parameters` | Q_SCALE, GAIN_DB documentation |
+| `tools: add Q knob behavior validation test` | test_q_behavior.py |
+| `docs: complete Ralph loop iteration summary` | RALPH_LOOP_PROGRESS.md |
+
+### Recommended Next Action
+
+When the user returns:
+
+```
+Ready for listen test!
+
+The VST3 is built and installed at:
+C:\Program Files\Common Files\VST3\TRENCH.vst3
+
+Suggested test:
+1. Load in DAW (Reaper, Cubase, etc.)
+2. Route pink noise → TRENCH → output
+3. A/B with X3 Talking Hedz preset
+4. Focus on formant character, not exact spectral match
+```
+
+### Ralph Loop Status
+
+- **Iterations completed:** 8
+- **Total error reduction:** 14.21 dB → 7.60 dB (46% improvement)
+- **DSP parameters:** Validated and documented
+- **Build:** Successful, installed
+- **Documentation:** Updated for handoff
