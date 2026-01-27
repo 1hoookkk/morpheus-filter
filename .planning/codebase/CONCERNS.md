@@ -1,163 +1,179 @@
 # Codebase Concerns
 
-**Analysis Date:** 2026-01-20
+**Analysis Date:** 2026-01-27
 
 ## Tech Debt
 
-**GAP-01: Wrong Data Source (CRITICAL):**
-- Issue: `talking_hedz_extracted.json` contains incorrect frequency data - likely from DLL extraction with RGB contamination
-- Files: `C:\Users\hooki\yup\talking_hedz_extracted.json`
-- Impact: ALL validation tests invalid. Formant frequencies are ~6x wrong (1371 Hz vs expected 217 Hz)
-- Evidence: Raw Cheat Engine capture shows 217 Hz; extracted JSON shows 1371 Hz; reference IR confirms 218 Hz
-- Fix approach: Regenerate from `talking_hedz_complete.json` raw a1/r coefficients applying:
-  1. Proper Hz decoding: `freq = arccos(-a1/(2*r)) * sr / (2*pi)`
-  2. 7.4 semitone tuning correction
-  3. Grid interpolation for full 17x17 coverage
-- Tracked in: `.planning/phases/01-dsp-engine/01-UAT.md`
+**TrenchFilter Disabled:**
+- Issue: The `TrenchFilter` class is commented out/disabled throughout the codebase "for debugging"
+- Files: `Source/PluginProcessor.h` (lines 4, 67-69, 93-94), `Source/PluginProcessor.cpp` (lines 210-212)
+- Impact: The clean, dedicated filter implementation is bypassed in favor of inline biquad processing
+- Fix approach: Re-enable TrenchFilter once coefficient validation is complete; remove dead code paths
 
-**Duplicate/Conflicting Header Files:**
-- Issue: Two different filter implementations exist with conflicting namespaces and approaches
+**Multiple Coefficient Systems (Code Complexity):**
+- Issue: Three parallel coefficient update paths create branching complexity
+- Files: `Source/PluginProcessor.cpp` (lines 347-363, 369-382, 504-518, 524-552)
+- Impact: Difficult to maintain; easy to introduce bugs when changing one path
+- Fix approach: Consolidate to single polar/v-space system once validated; deprecate legacy presets entirely
+
+**Biquad Topology Contradiction:**
+- Issue: CLAUDE.md specifies Direct Form I for stable morphing, but actual implementation uses DF-II Transposed
+- Files: `CLAUDE.md` (lines 38-45), `Source/DSP/Biquad.h` (lines 217-226), `Source/PluginProcessor.cpp` (lines 695-699)
+- Impact: May cause instability during rapid coefficient morphing; contradicts documented architecture
+- Fix approach: Decide on canonical topology; update either spec or code to match
+
+**Hardcoded File Path:**
+- Issue: File chooser has hardcoded user-specific path
+- Files: `Source/PluginEditor.cpp` (line 142): `juce::File("C:\\Users\\hooki\\do-it")`
+- Impact: Will fail or behave unexpectedly for other users
+- Fix approach: Use `juce::File::getSpecialLocation()` for user documents or last-used path
+
+**Magic Numbers Scattered:**
+- Issue: Undocumented constants throughout DSP code
 - Files:
-  - `C:\Users\hooki\yup\ZPlaneFilter.h` (195 lines, `ZPlane` namespace, older)
-  - `C:\Users\hooki\yup\ZPlaneData.h` (127 lines, `ZPlane` namespace)
-  - `C:\Users\hooki\yup\Source\dsp\ZPlaneFilter.h` (477 lines, `Trench` namespace, newer)
-- Impact: Confusion about which implementation is authoritative; test file may reference wrong version
-- Fix approach: Remove root-level headers or consolidate into `Source/dsp/` with single namespace
-
-**Deleted Files Not Committed:**
-- Issue: Three critical DSP files deleted but change not committed
-- Files (deleted from working tree):
-  - `Source/dsp/CartridgeLoader.h`
-  - `Source/dsp/GridInterpolator.h`
-  - `Source/dsp/ZPlaneEngine.h`
-- Impact: `Tests/test_cartridge_load.cpp` includes `CartridgeLoader.h` - build will fail
-- Fix approach: Either restore files or update test to use current implementation
-
-**Python/C++ Implementation Drift:**
-- Issue: Python validation code has experimental HYBRID topology; C++ has CASCADE topology
-- Files:
-  - `C:\Users\hooki\yup\validate_zplane.py` (HYBRID experiments, modified)
-  - `C:\Users\hooki\yup\Source\dsp\ZPlaneFilter.h` (CASCADE topology)
-- Impact: Python cannot validate C++ behavior if they use different algorithms
-- Fix approach: After resolving GAP-01, unify on single topology approach
-
-**Orphan Analysis Scripts:**
-- Issue: 15+ Python scripts in root directory from debugging/analysis phases
-- Files (root level):
-  - `analyze_reference.py`, `analyze_reference_corrected.py`, `analyze_reference_deep.py`
-  - `debug_coefficients.py`, `debug_zplane.py`, `debug_impulse.py`, `debug_m100q0.py`
-  - `validate_zplane.py`, `validate_grid_engine.py`, `validate_trench.py`, `validate_trench_v2.py`
-  - `compare_fft.py`, `log_encode_captures.py`, `analyze_cartridge.py`
-- Impact: Cluttered root directory; unclear which scripts are current vs obsolete
-- Fix approach: Move to `Scripts/` or `Tests/archive/`; document purpose of retained scripts
+  - `Source/PluginProcessor.cpp`: `0.446` (line 274), `CONTROL_RATE = 128` (line 84)
+  - `Source/DSP/TrenchFilter.h`: `0.8f`, `0.2f` (line 107)
+  - `Source/DSP/WavCubeLoader.cpp`: `86.4` (line 25), `32.0` (line 17)
+- Impact: Hard to understand purpose; easy to misconfigure
+- Fix approach: Replace with named constexpr values with documentation
 
 ## Known Bugs
 
-**None currently tracked** - GAP-01 blocks proper testing
+**Missing M0_Q0 Keyframe:**
+- Symptoms: Interpolation at low morph + low Q positions falls back to scaling M0_Q100 radius
+- Files: `Source/DSP/TrenchFilter.h` (lines 172-179)
+- Trigger: Set Morph near 0% and Q near 0%
+- Workaround: Current code scales radius down by 50%, but this is not validated against X3
+
+**Sample Rate Hardcoded:**
+- Symptoms: Filter frequencies will be wrong at sample rates other than 44100 Hz
+- Files: `Source/DSP/WavCubeLoader.cpp` (lines 443, 472, 475): hardcoded `44100.0`
+- Trigger: Running plugin at 48kHz or 96kHz
+- Workaround: None - coefficients will be calculated incorrectly
 
 ## Security Considerations
 
-**Reverse Engineering Tools Present:**
-- Risk: Lua scripts for Cheat Engine memory capture could raise legal concerns
-- Files: `C:\Users\hooki\yup\ce_capture_grid.lua`, `C:\Users\hooki\yup\x3_dump.lua`
-- Current mitigation: Files used for legitimate coefficient extraction, not distribution
-- Recommendations: Consider moving to separate extraction repo; document purpose
+**Memory Reading Tool:**
+- Risk: `tools/ripper.py` uses `pymem` to read EmulatorX.exe process memory
+- Files: `tools/ripper.py` (lines 57-72)
+- Current mitigation: Tool is development-only, not shipped with plugin
+- Recommendations: Document legal considerations; ensure tool never ships in release builds
 
-**No Credential Exposure:**
-- No `.env` files, API keys, or credentials detected
-- Current mitigation: N/A - clean state
+**No Path Validation on File Loading:**
+- Risk: File loader accepts any path without sanitization
+- Files: `Source/DSP/WavCubeLoader.cpp` (lines 110-120, 179-199)
+- Current mitigation: JUCE's file handling provides some protection
+- Recommendations: Add explicit path validation; reject paths outside expected directories
 
 ## Performance Bottlenecks
 
-**None identified** - DSP code is header-only with inline processing; performance profiling not yet performed
+**Control Rate Inside Sample Loop:**
+- Problem: `updateCoefficients()` called conditionally inside per-sample loop
+- Files: `Source/PluginProcessor.cpp` (lines 666-669)
+- Cause: Counter checked every sample; coefficient update every 128 samples
+- Improvement path: Move coefficient update to block-level processing; use parameter smoothing instead
+
+**Expensive Frequency Response Calculation:**
+- Problem: 256 frequency points with full trig calculations at 30 fps
+- Files: `Source/PluginProcessor.cpp` (lines 716-802)
+- Cause: Complex numbers computed per-point, per-stage (256 x 7 = 1792 calculations)
+- Improvement path: Cache coefficients; only recalculate on parameter change; use lookup tables for trig
+
+**No SIMD Optimization:**
+- Problem: 7-stage biquad cascade processes samples serially
+- Files: `Source/PluginProcessor.cpp` (lines 689-700)
+- Cause: Single-sample DF-II Transposed implementation
+- Improvement path: Use JUCE's `dsp::IIR::Filter` with SIMD or process in blocks per stage
 
 ## Fragile Areas
 
-**Q Scaling Formula:**
-- Files:
-  - `C:\Users\hooki\yup\Source\dsp\ZPlaneFilter.h` (lines 162-172)
-  - `C:\Users\hooki\yup\ZPlaneData.h` (lines 54-75)
-- Why fragile: Multiple formula attempts documented in debug sessions:
-  - Original exponential: `r = r_ref^(Q_ref/Q_new)` with Q_MIN=0.5 (too aggressive)
-  - Corrected exponential: Q_MIN=17 (from X3 captures)
-  - Linear alternative: `r = floor + (r_ref - floor) * q`
-- History: Debug session `.planning/debug/zplane-reference-file-invalid.md` shows extensive experimentation
-- Safe modification: Any Q formula change requires re-running all validation tests
-- Test coverage: Currently blocked by GAP-01; needs dedicated unit tests
+**Cube Decode Format Ambiguity:**
+- Files: `Source/DSP/WavCubeLoader.h` (lines 25-28), `Source/DSP/WavCubeLoader.cpp` (lines 24-26)
+- Why fragile: Comments acknowledge confusion about frequency scaling (86.4 vs 43.2)
+- Safe modification: Always validate against known reference frequencies (TalkingHedz: 994, 1690, 2485 Hz)
+- Test coverage: Manual Python scripts only; no automated regression tests
 
-**Filter Topology:**
-- Files: `C:\Users\hooki\yup\Source\dsp\ZPlaneFilter.h` (CASCADE processing loop)
-- Why fragile: Previous debug session incorrectly concluded PARALLEL topology
-- History: NotebookLM research confirmed CASCADE is correct per E-mu patents
-- Safe modification: Do NOT change to PARALLEL without E-mu documentation evidence
-- Test coverage: Topology correctness depends on reference match (blocked by GAP-01)
+**Memory Address Volatility:**
+- Files: `CLAUDE.md` (line 150), `tools/ripper.py` (line 33)
+- Why fragile: E-mu X3 coefficient base address shifts on every restart
+- Safe modification: Always verify address via Cheat Engine before capture session
+- Test coverage: Manual verification only
 
-**Coefficient Formula (a1 multiply):**
-- Files: `C:\Users\hooki\yup\Source\dsp\ZPlaneFilter.h` (lines 179-205)
-- Why fragile: Critical that `a1_actual = a1_captured * radius` - documented in spec
-- Safe modification: Formula verified via Cheat Engine captures; do not change
-- Test coverage: Covered by cartridge load test indirectly
+**WAV Frame Decoding:**
+- Files: `Source/DSP/WavCubeLoader.cpp` (lines 49-99)
+- Why fragile: Hardcoded frame patterns; any change in source file format will silently fail
+- Safe modification: Prefer binary or JSON loading over WAV parsing
+- Test coverage: None - relies on matching exact byte patterns
 
 ## Scaling Limits
 
-**Not applicable** - Offline audio plugin with fixed 7-stage architecture
+**Preset Storage:**
+- Current capacity: 3 presets hardcoded (TalkingHedz, MeatyGizmo, RadioCraze)
+- Limit: Memory scales linearly with presets; 289 cubes would require significant RAM for full library
+- Scaling path: Load cubes on-demand from embedded binary; unload unused cubes
+
+**Morph Keyframes:**
+- Current capacity: 5 keyframes per preset (0%, 25%, 50%, 75%, 100%)
+- Limit: Linear interpolation adequate for formant filters; may need more for complex filters
+- Scaling path: Support variable keyframe counts per preset
 
 ## Dependencies at Risk
 
-**nlohmann/json (vendored):**
-- Risk: Single-header file vendored at `Source/external/json.hpp` - version 3.11.3
-- Impact: No automatic security updates
-- Migration plan: Monitor nlohmann/json releases; manual update if needed
+**JUCE Version:**
+- Risk: Pinned to JUCE 8.0.1; newer versions may break API
+- Files: `CMakeLists.txt` (line 9)
+- Impact: Cannot take advantage of future JUCE improvements without testing
+- Migration plan: Bump version quarterly; test build before committing
+
+**pymem (Development Tool):**
+- Risk: Windows-only Python library for memory reading; no macOS/Linux equivalent
+- Files: `tools/ripper.py` (lines 22-27)
+- Impact: Coefficient capture only works on Windows
+- Migration plan: Pre-capture all needed presets; ship as embedded data
 
 ## Missing Critical Features
 
-**Data Regeneration Pipeline:**
-- Problem: No automated way to regenerate `talking_hedz_extracted.json` from source captures
-- Blocks: GAP-01 resolution requires manual coefficient processing
-- Files needed: Script to process `talking_hedz_complete.json` with proper formulas
+**v-space Interpolation Not Implemented:**
+- Problem: CLAUDE.md documents ARMAdillo v-space as "the magic" but code interpolates raw a1/radius
+- Files: `CLAUDE.md` (lines 47-91), `Source/PluginProcessor.cpp` (lines 428-433)
+- Blocks: Musical morphing quality; coefficients may pitch-wobble without v-space
 
-**C++ Validation Test:**
-- Problem: No C++ test validates actual filter output matches reference audio
-- Blocks: Cannot verify C++ implementation without Python dependency
-- Files needed: C++ equivalent of `Tests/validate_against_reference.py`
+**Only TalkingHedz Captured:**
+- Problem: Only one preset has validated X3 coefficient captures
+- Files: `TalkingHedz.json`, polar presets in `Source/PluginProcessor.cpp`
+- Blocks: Product cannot ship with single preset; need 10-15 essential filters
+
+**No 2D Morph Support:**
+- Problem: TalkingHedz is documented as 2D (Morph + Q axes) but Q axis interpolation is incomplete
+- Files: `Source/DSP/TrenchFilter.h` (lines 163-186)
+- Blocks: Full range of filter expressiveness
 
 ## Test Coverage Gaps
 
-**DSP Processing Untested:**
-- What's not tested: Actual filter audio output, biquad correctness, cascade behavior
-- Files: `C:\Users\hooki\yup\Source\dsp\ZPlaneFilter.h` (main DSP code)
-- Risk: Filter could be silently broken without reference comparison
-- Priority: HIGH (blocked by GAP-01)
+**No C++ Unit Tests:**
+- What's not tested: Biquad coefficient calculation, interpolation logic, file loading
+- Files: All `Source/DSP/*.h`, `Source/DSP/*.cpp`
+- Risk: Regression bugs during refactoring will go unnoticed
+- Priority: High - DSP correctness is critical
 
-**Interpolation Untested:**
-- What's not tested: Trilinear grid interpolation, morph boundary cases
-- Files: Deleted `GridInterpolator.h` or equivalent
-- Risk: Edge case interpolation bugs (morph=0, morph=1, Q=0, Q=1)
-- Priority: MEDIUM
+**Python Scripts Are Validation, Not Tests:**
+- What's not tested: Automated pass/fail; CI integration
+- Files: `tools/test_*.py` (20+ files)
+- Risk: Scripts require manual interpretation; easy to miss regressions
+- Priority: Medium - convert to pytest with assertions
 
-**Sample Rate Warping Untested:**
-- What's not tested: `warpA1ForSampleRate()` function at 48kHz/96kHz
-- Files: `C:\Users\hooki\yup\ZPlaneFilter.h` (lines 171-188)
-- Risk: Filter sounds wrong at non-44.1kHz rates
-- Priority: LOW (Phase 2 concern)
+**No Audio Output Regression Tests:**
+- What's not tested: Processed audio matches reference within tolerance
+- Files: `validation/*.wav` (reference files exist but no automation)
+- Risk: Filter character could drift without detection
+- Priority: High - core product quality
 
-**Only Cartridge Load Test Exists:**
-- What's tested: JSON parsing, Hz/semitone round-trip, cell population
-- Files: `C:\Users\hooki\yup\Tests\test_cartridge_load.cpp`
-- Coverage: ~10% of DSP functionality
-- Priority: HIGH - need filter output tests
-
-## Investigation Items (from STATE.md)
-
-**Formant Frequency Offset:**
-- Observation: Formant frequencies differ between reference captures and DSP output
-- Tracked for: Phase 3 (Accuracy)
-- Possible causes:
-  1. Reference not captured at C5 pitch
-  2. Different tuning reference
-  3. Processed audio vs impulse response
-- Recommendation: Capture new reference at known C5 pitch for direct comparison
+**GUI Not Tested:**
+- What's not tested: Component layout, parameter response, state persistence
+- Files: `Source/PluginEditor.cpp`, `Source/GUI/*.h`
+- Risk: UI bugs in different hosts/platforms
+- Priority: Low - manual testing adequate for MVP
 
 ---
 
-*Concerns audit: 2026-01-20*
+*Concerns audit: 2026-01-27*

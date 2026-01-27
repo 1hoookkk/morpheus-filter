@@ -1,128 +1,85 @@
 # External Integrations
 
-**Analysis Date:** 2026-01-20
+**Analysis Date:** 2026-01-27
 
 ## APIs & External Services
 
-**None required for runtime operation.**
-
-The filter operates entirely offline with pre-extracted coefficient data.
-
-## Data Extraction Toolchain
-
-**Cheat Engine:**
-- Purpose: Reverse-engineer filter coefficients from EmulatorX.dll at runtime
-- Scripts: `ce_capture_grid.lua`, `x3_dump.lua`
-- Process: Attach to FL Studio (fl64.exe) with Emulator X3 loaded
-- Output: Raw a1/radius/flag coefficients per stage at various Morph/Q positions
-
-**EmulatorX3 (E-mu):**
-- Purpose: Source of reference Z-Plane filter implementation ("Talking Hedz" cartridge)
-- Version: EmulatorX3 (legacy E-mu software)
-- Usage: Generate reference audio recordings for validation
-- Files: `hedz - m100q0.wav`, `hedz - 5050.wav`, etc.
-
-**FL Studio:**
-- Purpose: DAW host for EmulatorX3 during coefficient extraction
-- Version: FL Studio 64-bit
-- Process: Host EmulatorX3 VSTi, render audio for reference captures
+**None** - This is a fully offline audio plugin. No external APIs or web services.
 
 ## Data Storage
 
 **Databases:**
-- None - All data stored in JSON files
+- None - All data is file-based
 
 **File Storage:**
 - Local filesystem only
-- All cartridge data in project root
+- Binary coefficient data embedded in plugin at build time
+- JSON coefficient captures stored locally
 
 **Caching:**
-- None
+- None required - coefficients loaded once at plugin init
 
-## Data File Format
+## File Formats
 
-**Cartridge Format (`talking_hedz_extracted.json`):**
-```json
-{
-  "name": "Talking Hedz",
-  "version": "2.0",
-  "format": "universal_3variant_grid",
-  "topology": "cascade",
-  "parameter_map": {
-    "morph": "grid_x (0-16)",
-    "transform": "grid_y (0-16)",
-    "q": "variant (0=Q0%, 1=Q50%, 2=Q100%)"
-  },
-  "variants": [
-    {
-      "stages": [
-        {
-          "stage": 0,
-          "shape": "eq",
-          "freq_17x17": [...],
-          "gain_17x17": [...],
-          "radius_17x17": [...]
-        }
-      ]
-    }
-  ]
-}
-```
+**Input Data:**
+- `.wav` - E-mu Morpheus cube data file (`cubes_v1.01vc_170120.wav`)
+- `.json` - Coefficient captures and filter libraries
+- `.bin` - Pre-decoded binary coefficient ROM
 
-**Raw Capture Format (`talking_hedz_complete.json`):**
-```json
-{
-  "meta": {
-    "name": "Talking Hedz",
-    "sample_rate": 44100,
-    "topology": "cascade",
-    "stages": 5
-  },
-  "q100": {
-    "morph_0": [
-      {"a1": -1.974805, "r": 0.998231, "flag": 1}
-    ]
-  }
-}
-```
+**Audio:**
+- `.wav` - Reference recordings for validation (`validation/`)
+- Internal: 32-bit float audio buffers
 
 ## Authentication & Identity
 
 **Auth Provider:**
-- None required
+- None - No licensing or auth system implemented
 
 ## Monitoring & Observability
 
 **Error Tracking:**
-- None (debug builds use `std::printf` for coefficient logging)
+- None - errors handled via JUCE assertions
 
 **Logs:**
-- Console output via `debugPrint()` method (debug builds only)
-- Controlled by `JUCE_DEBUG`, `_DEBUG`, or `NDEBUG` macros
+- `DBG()` macro (JUCE) - Debug console output only
+- No file logging
 
 ## CI/CD & Deployment
 
 **Hosting:**
-- Local development only (Phase 1)
-- Phase 2: Plugin distribution TBD
+- Local development only
+- No cloud deployment
 
 **CI Pipeline:**
 - None configured
+- Manual builds via `build.bat`
 
-**Version Control:**
-- Git (current repository)
-- Branch: `master`
+## Reverse Engineering Integrations
+
+**EmulatorX.dll Integration:**
+- Purpose: Extract filter coefficients from running Emulator X3 process
+- Tool: `tools/ripper.py`, `tools/rip_all_data.py`
+- Library: `pymem` (Windows process memory reading)
+- Protocol: Direct memory read via Win32 API
+- Address: Dynamic per session (typically `0x012EE640` area)
+
+**Cheat Engine Integration:**
+- Purpose: Manual coefficient exploration and capture
+- Tool: `tools/ce_full_capture.lua`
+- Protocol: Lua script executed in Cheat Engine console
+- Required: Cheat Engine 7.x with Lua scripting
 
 ## Environment Configuration
 
 **Required env vars:**
 - None
 
-**Secrets location:**
-- N/A - No secrets required
+**Build-time configuration:**
+- `CMakeLists.txt` defines all plugin metadata
+- Memory addresses hardcoded in Python scripts
 
-**Configuration files:**
-- `.gitignore` - Excludes build artifacts, debug scripts, audio files
+**Secrets location:**
+- None - no secrets required
 
 ## Webhooks & Callbacks
 
@@ -132,51 +89,61 @@ The filter operates entirely offline with pre-extracted coefficient data.
 **Outgoing:**
 - None
 
-## Future Integrations (Phase 2+)
+## Hardware Integration
 
-**JUCE Framework:**
-- Purpose: VST3/AU plugin wrapper
-- Version: 8.0.10 (planned)
-- Integration: CMake-based build system
+**MIDI:**
+- Disabled (`NEEDS_MIDI_INPUT FALSE`, `NEEDS_MIDI_OUTPUT FALSE`)
 
-**DAW Hosts (validation targets):**
-- Ableton Live
-- Reaper
-- FL Studio
+**Audio Interface:**
+- Via JUCE audio device manager (Standalone mode)
+- Via host (VST3/AU mode)
 
-## Python Script Dependencies
+## Third-Party Software Dependencies
 
-**Used in validation and data processing:**
+**Development-time:**
+| Software | Purpose | Required |
+|----------|---------|----------|
+| Emulator X3 | Source of filter coefficients | Optional |
+| Cheat Engine | Memory analysis tool | Optional |
+| Python 3.10+ | Run analysis/capture scripts | Optional |
 
-| Package | Purpose | Files Using It |
-|---------|---------|----------------|
-| numpy | Numerical arrays, FFT | All Python scripts |
-| scipy.io.wavfile | WAV file loading | `validate_against_reference.py`, `validate_trench.py` |
-| scipy.interpolate | Grid interpolation | `Scripts/regenerate_cartridge.py` |
-| scipy.signal | Frequency response | `validate_grid_engine.py` |
-| matplotlib | Plotting | All validation scripts |
-| soundfile | Alternative WAV loading | `validate_against_reference.py` |
-| pathlib | Path handling | All Python scripts |
-| json | Cartridge parsing | All Python scripts |
+**Runtime:**
+| Software | Purpose | Required |
+|----------|---------|----------|
+| VST3 host (DAW) | Plugin hosting | Yes (or use Standalone) |
+| Audio interface | Sound I/O | Yes (Standalone only) |
 
-**Installation:**
-```bash
-pip install numpy scipy matplotlib soundfile
+## Data Flow
+
+```
+[Emulator X3 Process]
+        |
+        | (pymem memory read)
+        v
+[Python capture scripts] --> [JSON coefficient files]
+        |
+        | (manual copy)
+        v
+[C++ plugin source] --> [Embedded binary data]
+        |
+        | (JUCE build)
+        v
+[VST3 Plugin] <--> [DAW Host]
 ```
 
-## Reference File Validation
+## Validation Data Sources
 
-**Process:**
-1. Load reference WAV from EmulatorX3 capture
-2. Generate impulse response using Python ZPlaneEngine
-3. Compare via FFT/formant analysis
-4. Target: <3dB RMS error
+**Reference Recordings:**
+- `validation/bypassed-pinknoise.wav` - Dry reference signal
+- `validation/hedzmorph0q100.wav` - X3 output at Morph=0%, Q=100%
+- `validation/hedzmorph100q100.wav` - X3 output at Morph=100%, Q=100%
+- `validation/hedzmorph100q0.wav` - X3 output at Morph=100%, Q=0%
 
-**Key validation files:**
-- `Tests/validate_against_reference.py` - Main validation suite
-- `validate_trench_v2.py` - Alternative validation approach
-- `validate_grid_engine.py` - Grid interpolation testing
+**Coefficient Sources:**
+- `TalkingHedz.json` - Validated keyframe coefficients
+- `Source/Data/morpheus_zplane_library.json` - Full filter library
+- `trench_full_capture_*.json` - Runtime sweep captures
 
 ---
 
-*Integration audit: 2026-01-20*
+*Integration audit: 2026-01-27*

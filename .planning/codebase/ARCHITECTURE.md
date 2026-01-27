@@ -1,166 +1,144 @@
 # Architecture
 
-**Analysis Date:** 2026-01-20
+**Analysis Date:** 2026-01-27
 
 ## Pattern Overview
 
-**Overall:** Domain-Driven DSP Engine with Data-Driven Cartridge System
+**Overall:** JUCE Audio Plugin (Processor-Editor MVC)
 
 **Key Characteristics:**
-- Header-only C++ DSP implementation in `Trench` and `ZPlane` namespaces
-- Data-driven design: filter behavior defined by JSON cartridge files
-- Python validation/analysis tooling alongside C++ implementation
-- Phase-based development with completed DSP engine (Phase 1)
+- Standard JUCE plugin pattern with `AudioProcessor` (model/controller) and `AudioProcessorEditor` (view)
+- DSP processing embedded in processor with control-rate coefficient updates
+- Parameter state management via `AudioProcessorValueTreeState` (APVTS)
+- 7-stage cascaded biquad filter architecture (14 poles) for Z-Plane emulation
+- Multiple coefficient data sources (polar presets, WAV cubes, legacy presets)
 
 ## Layers
 
+**Plugin Core (Entry Points):**
+- Purpose: JUCE plugin lifecycle, DAW integration
+- Location: `Source/PluginProcessor.cpp`, `Source/PluginProcessor.h`
+- Contains: Audio processing, parameter management, state persistence
+- Depends on: DSP layer, JUCE framework
+- Used by: DAW host
+
+**DSP Layer:**
+- Purpose: Filter coefficient loading and decoding
+- Location: `Source/DSP/`
+- Contains: `WavCubeLoader` (cube data parsing), biquad coefficient calculation
+- Depends on: Data layer (embedded binaries)
+- Used by: Plugin Core
+
+**GUI Layer:**
+- Purpose: User interface rendering and interaction
+- Location: `Source/GUI/`
+- Contains: Custom LookAndFeel, slider/knob components, LCD display
+- Depends on: Plugin Core (via APVTS attachments)
+- Used by: Plugin Editor
+
 **Data Layer:**
-- Purpose: Define filter coefficient data structures and cartridge format
-- Location: `Source/dsp/ZPlaneData.h`, `ZPlaneData.h` (root)
-- Contains: `StageData`, `MorphKeyframe`, `ZPlaneCartridge`, `BiquadCoeffs` structs
-- Depends on: Standard library only
-- Used by: Loader, Filter Engine
-
-**Loader Layer:**
-- Purpose: Parse JSON cartridge files into runtime data structures
-- Location: `ZPlaneLoader.h` (root), `Source/dsp/CartridgeLoader.h` (deleted/in-progress)
-- Contains: `ZPlaneLoader` class, `getTalkingHedzCartridge()` fallback function
-- Depends on: Data Layer, JUCE JSON (or nlohmann/json)
-- Used by: Filter Engine initialization
-
-**DSP Engine Layer:**
-- Purpose: Real-time audio processing using cascaded biquad filters
-- Location: `Source/dsp/ZPlaneFilter.h` (Trench namespace), `ZPlaneFilter.h` (ZPlane namespace, root)
-- Contains: `ZPlaneFilter`, `HChipStage`, `BiquadSection`, `Ramp` classes
-- Depends on: Data Layer
-- Used by: (Future) Plugin Processor
-
-**Validation Layer:**
-- Purpose: Verify DSP accuracy against EmulatorX3 reference recordings
-- Location: Root directory Python scripts, `Tests/`
-- Contains: Python implementations mirroring C++ DSP, FFT analysis, plotting
-- Depends on: NumPy, SciPy, Matplotlib
-- Used by: Development/testing workflow
+- Purpose: Static embedded data for filter presets
+- Location: `Source/Data/`
+- Contains: Cube names, pre-decoded binary data, JSON libraries
+- Depends on: Nothing (static)
+- Used by: DSP layer
 
 ## Data Flow
 
-**Cartridge Loading:**
+**Audio Processing Chain:**
 
-1. JSON file read from disk (`talking_hedz_cartridge.json` or `talking_hedz_extracted.json`)
-2. `ZPlaneLoader::loadFromFile()` parses JSON into `ZPlaneCartridge` struct
-3. Cartridge contains `keyframes[]` array, each with `position` and `stages[5]`
-4. Each stage has `a1`, `radius`, `flag` coefficients captured from EmulatorX3
+1. DAW calls `processBlock()` with audio buffer
+2. Control-rate update (every 128 samples): recalculate biquad coefficients
+3. Per-sample: apply drive saturation (optional)
+4. Per-sample: cascade through 7 biquad stages (Direct Form II Transposed)
+5. Apply wet/dry mix and output gain
+6. Return processed buffer to DAW
 
-**Coefficient Computation (per control tick):**
+**Coefficient Update Flow:**
 
-1. User sets `morph` (0-1) and `q` (0-1) parameters
-2. Find bracketing morph keyframes and compute interpolation factor `t`
-3. For each of 5 stages:
-   - Interpolate `a1` and `radius` between keyframes
-   - Apply Q scaling: `r_scaled = r_ref^(Q_ref/Q_new)`
-   - Compute biquad coefficients using flag-dependent numerator formulas
-4. Set coefficient targets for ramped smoothing
-
-**Audio Processing (per sample):**
-
-1. Check if control interval elapsed, update coefficient targets
-2. For each biquad stage, tick coefficient ramps (delta-add smoothing)
-3. Process sample through 5-stage cascade using Direct Form II Transposed
-4. Output = cascaded filter result
+1. Read morph/Q parameters from APVTS
+2. Route to appropriate source:
+   - Cubes loaded? -> `updateCoefficientsFromCube()`
+   - Polar presets? -> `updateCoefficientsFromPolar()`
+   - Legacy? -> `updateCoefficientsFromLegacy()`
+3. Interpolate between keyframes based on morph value
+4. Apply Q scaling to pole radius
+5. Calculate biquad coefficients (b0, b1, b2, a1, a2)
+6. Store in `currentCoeffs[]` array for audio processing
 
 **State Management:**
-- Filter state: `z1`, `z2` delay elements per stage
-- Coefficient ramps: `cur`, `tgt`, `step`, `remaining` per coefficient
-- Parameters: `morph`, `qKnob` normalized 0-1 values
+- Parameters: morph, q, drive, mix, output, bypass
+- State persistence: XML serialization via `getStateInformation()`/`setStateInformation()`
+- Preset/cube selection stored in state tree
 
 ## Key Abstractions
 
-**ZPlaneFilter (main class):**
-- Purpose: Complete Z-Plane filter implementation with H-Chip emulation
-- Examples: `Source/dsp/ZPlaneFilter.h` (Trench namespace)
-- Pattern: Control-rate coefficient generation + audio-rate delta-add ramping
+**BiquadCoeffs:**
+- Purpose: Single biquad stage coefficient set
+- Examples: `Source/PluginProcessor.h` (lines 108-112)
+- Pattern: POD struct with b0, b1, b2, a1, a2
 
-**HChipStage (biquad with smoothing):**
-- Purpose: Single biquad section with per-coefficient ramping
-- Examples: `Source/dsp/ZPlaneFilter.h` lines 92-145
-- Pattern: Ramp objects for b0, b1, b2, a1, a2 + DF2T processing
+**PolarStageParams:**
+- Purpose: E-mu-style polar representation (a1, radius, flag)
+- Examples: `Source/PluginProcessor.h` (lines 126-131)
+- Pattern: Pre-validated X3 capture data format
 
-**StageRaw / StageData (coefficient data):**
-- Purpose: Raw captured coefficients from EmulatorX3 memory
-- Examples: `Source/dsp/ZPlaneFilter.h` lines 39-43, `ZPlaneData.h` lines 15-19
-- Pattern: {a1, radius, flag} tuple per stage per keyframe
+**WavCubeLoader::Cube:**
+- Purpose: Complete filter preset with morph interpolation points
+- Examples: `Source/DSP/WavCubeLoader.h` (lines 62-74)
+- Pattern: Container with name, index, and vector of MorphPoints
 
-**BiquadCoeffs (computed coefficients):**
-- Purpose: Actual biquad filter coefficients after Q scaling and numerator computation
-- Examples: `Source/dsp/ZPlaneFilter.h` lines 48-51
-- Pattern: {b0, b1, b2, a1, a2} for Direct Form II
+**MorphPoint:**
+- Purpose: Snapshot of all 7 stages at a particular morph position
+- Examples: `Source/DSP/WavCubeLoader.h` (lines 55-59)
+- Pattern: Array of PoleStage structs with morph position
 
 ## Entry Points
 
-**C++ Filter Usage:**
-- Location: `Source/dsp/ZPlaneFilter.h`
-- Triggers: Plugin processBlock (future Phase 2)
-- Responsibilities: `prepare()` -> `setMorph()/setQ()` -> `processBlock()`
+**Plugin Instantiation:**
+- Location: `Source/PluginProcessor.cpp` (line 952-955)
+- Triggers: DAW loads plugin
+- Responsibilities: Creates `TrenchAudioProcessor` instance
 
-**C++ Cartridge Loading:**
-- Location: `ZPlaneLoader.h`, `Source/dsp/CartridgeLoader.h`
-- Triggers: Plugin initialization, preset changes
-- Responsibilities: Parse JSON, populate ZPlaneCartridge struct
+**Audio Processing:**
+- Location: `Source/PluginProcessor.cpp::processBlock()` (lines 640-710)
+- Triggers: DAW audio callback
+- Responsibilities: Process audio through 7-stage biquad cascade
 
-**Python Validation:**
-- Location: `validate_trench_v2.py`, `validate_zplane.py`
-- Triggers: Manual execution during development
-- Responsibilities: Compare C++ implementation against reference WAV files
+**Editor Creation:**
+- Location: `Source/PluginProcessor.cpp::createEditor()` (lines 947-950)
+- Triggers: DAW opens plugin UI
+- Responsibilities: Creates `TrenchAudioProcessorEditor` instance
 
-**C++ Test Harness:**
-- Location: `Tests/test_cartridge_load.cpp`
-- Triggers: Build and run during development
-- Responsibilities: Verify cartridge loading and data integrity
+**Cube Loading:**
+- Location: `Source/PluginProcessor.cpp::loadCubesFromWav()` (lines 874-896)
+- Triggers: User selects cube file
+- Responsibilities: Parse WAV/binary data into cube structures
 
 ## Error Handling
 
-**Strategy:** Defensive clamping with sensible defaults
+**Strategy:** Defensive defaults with DBG logging
 
 **Patterns:**
-- Parameter clamping: `morph = clampf(m, 0.0f, 1.0f)`
-- Radius bounds: `clamp(r, 0.5f, 0.9999f)` to prevent instability
-- Division safety: `std::max(r_ref, 1e-12f)` before log operations
-- Numerator safety: `if (norm <= 0) norm = 0.0001f` to prevent silence
+- Invalid cube index: Return bypass defaults (a1=-2, r=0.5)
+- File load failure: Return false, set `lastError` string
+- Coefficient bounds: Clamp radius to 0.9999 for stability
+- Denormal protection: Zero samples below 1e-20 threshold
 
 ## Cross-Cutting Concerns
 
-**Logging:** Debug builds use `std::printf()` in `debugPrint()` / `debugPrintForMorphQ()` methods, controlled by `JUCE_DEBUG` / `_DEBUG` / `NDEBUG` macros.
+**Logging:** JUCE `DBG()` macro for debug builds only
 
-**Validation:** Python scripts generate PNG plots and compare FFT spectra. Reference WAV files (`hedz - m100q0.wav`, etc.) serve as ground truth.
+**Validation:**
+- Coefficient clamping for filter stability
+- Sample rate stored in processor for coefficient calculation
+- Bounds checking on array indices
 
-**Authentication:** Not applicable (offline audio plugin).
-
-## Critical Formulas
-
-**Coefficient Multiplication (proven formula):**
-```cpp
-a1_actual = a1_captured * radius
-a2 = radius * radius
-```
-
-**Q Scaling (radius reduction):**
-```cpp
-r_scaled = exp(log(r_ref) * (Q_ref / Q_new))
-// Q_new = 0.5 + q_knob * 99.5  (maps 0-1 to 0.5-100)
-```
-
-**Bandpass Numerator (flag=1):**
-```cpp
-scale = (1.0 - a2) / 2.0
-b0 = scale, b1 = 0, b2 = -scale
-```
-
-**Lowpass Numerator (flag=0):**
-```cpp
-norm = (1.0 + a1 + a2) / 4.0
-b0 = norm, b1 = 2*norm, b2 = norm
-```
+**Threading:**
+- Audio thread: `processBlock()` - no allocations, no locks
+- Message thread: UI updates, file loading
+- Control rate: Coefficient updates every 128 samples to reduce CPU
 
 ---
 
-*Architecture analysis: 2026-01-20*
+*Architecture analysis: 2026-01-27*

@@ -1,246 +1,263 @@
 # Coding Conventions
 
-**Analysis Date:** 2026-01-20
+**Analysis Date:** 2026-01-27
 
 ## Naming Patterns
 
 **Files:**
-- C++ headers: PascalCase with `.h` extension (`ZPlaneFilter.h`, `ZPlaneData.h`, `CartridgeLoader.h`)
-- Python scripts: snake_case with `.py` extension (`validate_trench.py`, `regenerate_cartridge.py`)
-- Lua scripts: snake_case with `.lua` extension (`ce_capture_grid.lua`)
-- Test files: `test_` prefix for C++ (`test_cartridge_load.cpp`), `validate_` prefix for Python validators
+- C++ source: `PascalCase.cpp` - e.g., `PluginProcessor.cpp`, `WavCubeLoader.cpp`
+- C++ headers: `PascalCase.h` - e.g., `PluginProcessor.h`, `TrenchLookAndFeel.h`
+- Python scripts: `snake_case.py` - e.g., `validate_audio.py`, `test_dsp.py`
+- Data files: `snake_case.json` or `snake_case.bin`
 
-**Functions/Methods:**
-- C++: camelCase (`processBlock`, `setMorph`, `applyQToRadius`, `computeCoeffs`)
-- Python: snake_case (`process_sample`, `set_parameters`, `apply_q_to_radius`, `load_cartridge`)
+**C++ Classes:**
+- PascalCase: `TrenchAudioProcessor`, `WavCubeLoader`, `BiquadState`
+- GUI components: `TrenchSlider`, `TrenchKnob`, `LCDDisplay`, `PresetSelector`
+- JUCE convention: Processor class named `{Plugin}AudioProcessor`, Editor named `{Plugin}AudioProcessorEditor`
 
-**Variables:**
-- C++: camelCase for locals (`sampleCounter`, `ctrlInterval`, `rampLength`)
-- C++: single letters acceptable for short-lived math variables (`x`, `y`, `r`, `s`, `tx`)
-- Python: snake_case (`sample_rate`, `morph_idx`, `ref_peaks`)
+**C++ Functions:**
+- camelCase for member functions: `prepareToPlay()`, `processBlock()`, `updateCoefficients()`
+- Static functions: camelCase - `hzToSemi()`, `semiToHz()`
+- Getters: `get*()` pattern - `getAPVTS()`, `getFrequencyResponse()`, `getValue()`
+- Setters: `set*()` pattern - `setPresetIndex()`, `setMorph()`, `setValue()`
+- Boolean getters: `is*()` or `are*()` - `areCubesLoaded()`, `isValid()`
 
-**Constants:**
-- C++: SCREAMING_SNAKE_CASE (`MAX_STAGES`, `Q_REF`, `DEFAULT_CTRL_INTERVAL`)
-- Python: SCREAMING_SNAKE_CASE (`SAMPLE_RATE`, `NUM_STAGES`, `GRID_SIZE`, `TUNING_FACTOR`)
+**C++ Variables:**
+- Member variables: camelCase without prefix - `currentSampleRate`, `morphParam`, `cubesLoaded`
+- Private members: no underscore prefix (JUCE style)
+- Constants: `UPPER_SNAKE_CASE` - `CONTROL_RATE`, `NUM_STAGES`, `EXPECTED_CUBES`
+- Template parameters: single uppercase letter or PascalCase
 
-**Types/Classes/Structs:**
-- C++: PascalCase (`ZPlaneFilter`, `HChipStage`, `BiquadCoeffs`, `StageRaw`, `Ramp`)
-- Python: PascalCase (`ZPlaneEngine`, `GridInterpolator`, `GridStageData`, `ZPlaneCartridge`)
+**Python Functions:**
+- snake_case: `load_wav()`, `compute_spectrum()`, `process_biquad()`
+- Test functions: `main()` entry point pattern
 
-**Namespaces:**
-- C++: PascalCase (`namespace Trench`, `namespace ZPlane`)
+**Python Variables:**
+- snake_case: `sample_rate`, `morph_param`, `output_samples`
+- Constants: `UPPER_SNAKE_CASE` - `M0_Q100_STAGES`, `ZERO_MODE`
 
 ## Code Style
 
 **Formatting:**
-- No explicit formatter config detected
-- Indentation: 4 spaces (observed in both C++ and Python)
-- Opening braces: same line for functions/control flow in C++
-- Max line length: ~100 characters observed
+- No explicit formatter configured (manual formatting)
+- 4-space indentation for C++
+- 4-space indentation for Python
+- Opening braces on same line for C++ (`void foo() {`)
+- Max ~100 character line width
 
 **Linting:**
-- No explicit linter config (no `.eslintrc`, `.pylintrc`, etc.)
-- Code follows consistent style through convention
+- No explicit linter configured
+- JUCE recommended warning flags enabled via CMake:
+  ```cmake
+  juce::juce_recommended_warning_flags
+  ```
+
+**C++ Patterns:**
+- Use `constexpr` for compile-time constants
+- Use `static constexpr` for class constants:
+  ```cpp
+  static constexpr int NUM_STAGES = 7;
+  static constexpr int CONTROL_RATE = 128;
+  ```
+- Prefer `std::array` over C-style arrays
+- Use `std::vector` for dynamic collections
+- Use `std::unique_ptr` for owned pointers
 
 ## Import Organization
 
 **C++ Headers:**
-1. Standard library (`<cmath>`, `<algorithm>`, `<array>`)
-2. External libraries (`"../external/json.hpp"`)
-3. Project headers (same directory)
+1. Own header first (for .cpp files): `#include "PluginProcessor.h"`
+2. Project headers: `#include "DSP/WavCubeLoader.h"`
+3. JUCE headers: `#include <JuceHeader.h>`
+4. Standard library: `#include <cmath>`, `#include <vector>`
 
-**Python:**
-1. Standard library (`json`, `pathlib`)
-2. Third-party (`numpy`, `scipy`, `matplotlib`)
-3. Local modules (rare - most scripts are self-contained)
+**Python Imports:**
+1. Standard library: `import os`, `import sys`, `import json`, `import time`
+2. Third-party: `import numpy as np`, `from scipy.io import wavfile`
+3. Local modules (rare)
 
-**Example from `Tests/validate_against_reference.py`:**
-```python
-import numpy as np
-import json
-from pathlib import Path
-
-try:
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-    HAS_MATPLOTLIB = True
-except ImportError:
-    HAS_MATPLOTLIB = False
+**Path Aliases (CMake):**
+```cmake
+target_include_directories(TRENCH PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Source)
 ```
-
-**Path Aliases:**
-- None detected - use relative paths in C++ (`"../external/json.hpp"`)
+Use `"DSP/WavCubeLoader.h"` not `"../../DSP/WavCubeLoader.h"`
 
 ## Error Handling
 
 **C++ Patterns:**
-- Clamping values to valid ranges rather than throwing:
+- Return `bool` for success/failure: `loadFromWav()` returns `true`/`false`
+- Store error message in member: `lastError` string, accessed via `getLastError()`
+- Use `DBG()` macro for debug output (JUCE pattern)
+- Check validity before use: `if (cube == nullptr)` guards
+- Clamp values to valid ranges: `juce::jlimit()`, `std::min()`, `std::max()`
+
 ```cpp
-inline float clampf(float x, float lo, float hi) {
-    return (x < lo) ? lo : ((x > hi) ? hi : x);
+bool WavCubeLoader::loadFromWav(const juce::File& wavFile)
+{
+    cubes.clear();
+    lastError.clear();
+
+    if (!wavFile.existsAsFile())
+    {
+        lastError = "File not found: " + wavFile.getFullPathName();
+        return false;
+    }
+    // ...
 }
-
-// Usage: prevent division by zero
-float origRadius = std::max(stage.radius, 1e-12f);
-```
-
-- Default/fallback values for edge cases:
-```cpp
-if (norm <= 0.0) norm = 0.0001;  // Prevent silence near DC
 ```
 
 **Python Patterns:**
-- Try/except for optional dependencies with feature flags:
-```python
-try:
-    import soundfile as sf
-    HAS_SOUNDFILE = True
-except ImportError:
-    HAS_SOUNDFILE = False
-```
-
-- Assertions for data validation:
-```python
-assert len(variants) == NUM_VARIANTS, f"Expected 3 variants, got {len(variants)}"
-```
-
-- Main entry points wrapped in try/except:
-```cpp
-int main() {
-    try {
-        // ... code ...
-    } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
-        return 1;
-    }
-}
-```
+- Return value indicates success: `return 0` for success, `return 1` for failure
+- Use `try/except` for external operations (file I/O, memory access)
+- Print error messages to stdout with `[ERROR]` prefix
+- Check for NaN/Inf in DSP output:
+  ```python
+  if np.any(np.isnan(output)) or np.any(np.isinf(output)):
+      print("ERROR: Output contains NaN/Inf!")
+  ```
 
 ## Logging
 
-**Framework:** `std::printf` (C++), `print()` (Python) - no logging framework
+**Framework:** JUCE `DBG()` macro for C++, `print()` for Python
 
-**Patterns:**
-- Debug output via printf in debug builds only:
-```cpp
-#if defined(JUCE_DEBUG) || defined(_DEBUG) || !defined(NDEBUG)
-    void debugPrint() const {
-        std::printf("=== ZPlaneFilter Debug ===\n");
-        // ...
-    }
-#endif
-```
+**C++ Patterns:**
+- Use `DBG()` for debug output (stripped in release builds):
+  ```cpp
+  DBG("TRENCH: Loaded " << cubeLoader.getNumCubes() << " cubes from " << binFile.getFileName());
+  ```
 
-- Python validation scripts use structured print output:
-```python
-print(f"\n{'='*60}")
-print(f"TEST: {ref_name} (Morph={morph*100:.0f}%, Q={q*100:.0f}%)")
-print('='*60)
-```
+**Python Patterns:**
+- Print progress with `=` separators and section headers:
+  ```python
+  print("=" * 70)
+  print("TRENCH DSP Test")
+  print("=" * 70)
+  ```
+- Use `f-strings` for formatted output
+- Prefix status messages: `[TRENCH]`, `[ERROR]`, `[ACTION]`, `[GO!]`
 
 ## Comments
 
 **When to Comment:**
-- File-level documentation blocks explaining purpose and critical formulas
-- Section separators using `//==============================================================================`
-- Inline comments for critical/non-obvious formulas
+- Section headers with `//===...===` dividers (JUCE style)
+- Complex DSP formulas with formula explanation
+- Validation sources: "Validated against X3", "From CLAUDE.md"
+- Capture date and source for magic numbers
 
-**C++ Documentation Style:**
+**Section Headers:**
 ```cpp
-/**
- * TRENCH Z-PLANE FILTER ENGINE - H-CHIP EMULATION
- *
- * 1:1 behavioral clone of E-mu Emulator X3 "Talking Hedz" Z-Plane filter.
- * Emulates Rossum H-Chip architecture:
- *   - Control-rate: coefficient target generation
- *   - Audio-rate: delta-add ramping + DF2T MAC only
- *
- * CRITICAL FORMULAS (from Cheat Engine captures):
- *   a1_actual = a1_captured * radius
- *   a2 = radius^2
- *   Q scaling: r = r_ref^(Q_ref/Q_new)
- */
+//==============================================================================
+// COEFFICIENT CALCULATION - Verified formulas from Audio EQ Cookbook
+//==============================================================================
 ```
+
+**Formula Documentation:**
+```cpp
+// a1 = -2 * r * cos(theta)
+// This is the direct biquad coefficient for pole placement
+double theta = decodeTheta(freqByte, sampleRate);
+return -2.0 * radius * std::cos(theta);
+```
+
+**JSDoc/TSDoc:** Not used (C++/Python codebase)
 
 **Python Docstrings:**
-```python
-def hz_to_semitone(hz):
-    """Convert Hz to semitones relative to C5.
-
-    Semitone space is logarithmic frequency space relative to C5.
-    This enables linear interpolation to produce logarithmic frequency sweeps
-    (the "Rossum sweep" effect from E-mu patents).
-
-    Examples:
-      C5 (523 Hz) -> 0 semitones
-      C6 (1046 Hz) -> +12 semitones
-    """
-```
+- Triple-quoted docstrings at module and function level
+- Include Usage section for command-line scripts
+- Document parameters inline:
+  ```python
+  def compute_spectrum(data, sample_rate, nfft=8192):
+      """Compute magnitude spectrum in dB"""
+  ```
 
 ## Function Design
 
-**Size:** Functions generally kept small (10-50 lines). Complex logic split into helpers.
+**Size:**
+- Keep functions focused on single responsibility
+- DSP functions: typically 10-50 lines
+- Processing functions: may be longer with clear section comments
 
 **Parameters:**
-- C++: Pass primitives by value, structs by const reference
-- Return by value (no output parameters)
-
-**Example:**
-```cpp
-inline BiquadCoeffs computeCoeffs(float a1_captured, float radius, int flag) {
-    BiquadCoeffs c;
-    // ... compute ...
-    return c;
-}
-```
+- Use default parameters for optional values: `nfft=8192`
+- Pass large objects by const reference in C++: `const juce::File&`
+- Avoid more than 5-6 parameters
 
 **Return Values:**
-- Structs for multiple related values (`BiquadCoeffs`, `GridStageData`)
-- Primitives for single values
-- `std::array` for fixed-size collections
+- Single return type preferred
+- Use structs for multiple return values in C++:
+  ```cpp
+  struct BiquadCoeffs {
+      double b0, b1, b2, a1, a2;
+  };
+  ```
+- Use tuples in Python: `return freqs, magnitude_db`
 
 ## Module Design
 
-**C++ Header-Only:**
-- All DSP code is header-only (`.h` files with inline implementations)
-- No separate `.cpp` files for core DSP logic
-- Enables easy inclusion and compiler optimization
-
 **Exports:**
-- Classes and structs at namespace scope
-- `inline` functions for utilities
-- No `extern` declarations
+- One class per header file (JUCE convention)
+- Header guards: `#pragma once`
 
-**Python Scripts:**
-- Self-contained scripts with `if __name__ == "__main__":` guards
-- Classes defined within scripts (not separate modules)
-- Shared logic duplicated across scripts (no shared module)
+**Barrel Files:** Not used (explicit includes)
+
+**Directory Structure:**
+- `Source/` - Main plugin code
+- `Source/DSP/` - Digital signal processing components
+- `Source/GUI/` - UI components
+- `Source/Data/` - Static data (cube names, embedded resources)
+- `tools/` - Python validation and analysis scripts
+
+## Struct/Class Patterns
+
+**Nested Types:**
+- Use nested structs for closely related data:
+  ```cpp
+  class WavCubeLoader {
+  public:
+      struct PoleStage { ... };
+      struct MorphPoint { ... };
+      struct Cube { ... };
+  };
+  ```
+
+**JUCE Macros:**
+- End all Component classes with:
+  ```cpp
+  JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ClassName)
+  ```
+
+**Initialization:**
+- Use in-class member initialization:
+  ```cpp
+  double currentSampleRate = 48000.0;
+  int currentPresetIndex = 0;
+  bool cubesLoaded = false;
+  ```
 
 ## DSP-Specific Conventions
 
-**Coefficient Naming:**
-- `b0, b1, b2`: numerator (zeros)
-- `a1, a2`: denominator (poles, note `a0 = 1` implicit)
-- `z1, z2`: filter state (delay line)
+**Sample Processing:**
+- Use `double` for coefficients and state
+- Use `float` for audio buffers (JUCE convention)
+- Process sample-by-sample with clear loop:
+  ```cpp
+  for (int s = 0; s < numSamples; ++s) {
+      // process
+  }
+  ```
 
-**Processing Functions:**
-- `processSample(float x)`: single sample
-- `processBlock(float* data, int numSamples)`: block processing
-- `reset()`: clear state
+**Coefficient Names:**
+- Standard biquad: `b0, b1, b2, a1, a2` (normalized, a0=1)
+- Pole representation: `a1` (frequency), `r` (radius), `flag` (type)
+- State variables: `z1, z2` (Direct Form II delays)
 
-**Parameter Setting:**
-- `setMorph(float m)`: expects 0-1 range
-- `setQ(float q)`: expects 0-1 range
-- Internal clamping to valid ranges
-
-**Critical Formula Comments:**
-- Label formulas as `CRITICAL:` when they are core to algorithm correctness:
-```cpp
-// CRITICAL: a1_actual = a1_captured * radius (proven formula)
-c.a1 = a1_cap * r;
-```
+**Magic Numbers:**
+- Document source and validation:
+  ```cpp
+  // Validated against VowelSpace formants (F1=778Hz, F2=2074Hz)
+  return static_cast<double>(byte) * 86.4;
+  ```
 
 ---
 
-*Convention analysis: 2026-01-20*
+*Convention analysis: 2026-01-27*

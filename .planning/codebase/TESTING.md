@@ -1,325 +1,276 @@
 # Testing Patterns
 
-**Analysis Date:** 2026-01-20
+**Analysis Date:** 2026-01-27
 
 ## Test Framework
 
-**C++:**
-- No formal test framework (no Google Test, Catch2, etc.)
-- Simple `main()` functions with assertions and manual verification
-- Compiles to standalone executables
+**Runner:**
+- Python scripts (no formal framework like pytest)
+- Manual validation scripts in `tools/` directory
+- No C++ unit test framework configured
 
-**Python:**
-- No formal test framework (no pytest, unittest)
-- Validation scripts with manual assertions and print-based reporting
-- Dependencies: `numpy`, `scipy`, `matplotlib` (optional)
+**Assertion Library:**
+- Manual assertions via `if/else` and print statements
+- NumPy comparison functions: `np.any(np.isnan())`, `np.any(np.isinf())`
 
 **Run Commands:**
 ```bash
-# C++ test (Windows)
-cd C:/Users/hooki/yup/Tests
-g++ -std=c++17 -I../Source test_cartridge_load.cpp -o test_load.exe
-./test_load.exe
-
-# Python validation
-python Tests/validate_against_reference.py
+python tools/test_dsp.py              # Run DSP validation test
+python tools/validate_audio.py        # Run audio comparison validation
+python tools/test_zplane_filter.py    # Run Z-plane filter test
 ```
 
 ## Test File Organization
 
 **Location:**
-- C++ tests: `Tests/` directory
-- Python validation: `Tests/` directory for production, root for development
+- All test/validation scripts in `tools/` directory (separate from source)
+- Reference audio in `validation/` directory
+- Output files in `validation/output/` directory
 
 **Naming:**
-- C++ test files: `test_*.cpp` prefix
-- Python validators: `validate_*.py` prefix
+- Test scripts: `test_*.py` - `test_dsp.py`, `test_zplane_filter.py`
+- Validation scripts: `validate_*.py` - `validate_audio.py`, `validate_wav.py`
+- Analysis scripts: `analyze_*.py`, `sweep_*.py`, `solve_*.py`
+- Reference audio: descriptive names - `bypassed-pinknoise.wav`, `hedzmorph0q100.wav`
 
 **Structure:**
 ```
-Tests/
-  test_cartridge_load.cpp      # C++ cartridge loading test
-  test_load.exe                # Compiled test binary
-  validate_against_reference.py # Python reference validation suite
-```
+tools/
+├── test_dsp.py                 # Main DSP validation
+├── test_zplane_filter.py       # Z-plane filter test
+├── test_allpole.py             # Topology tests
+├── test_parallel.py            # Parallel vs cascade tests
+├── test_hybrid_topology.py     # Hybrid topology tests
+├── validate_audio.py           # Audio comparison harness
+├── ripper.py                   # Memory capture tool
+└── analyze_*.py                # Analysis utilities
 
-**Development Scripts (root, gitignored):**
-```
-validate_zplane.py             # Ad-hoc Z-plane validation
-validate_trench.py             # Trench filter validation v1
-validate_trench_v2.py          # Trench filter validation v2
-debug_*.py                     # Debug/exploration scripts
+validation/
+├── bypassed-pinknoise.wav      # Dry input (pink noise)
+├── hedzmorph0q100.wav          # X3 reference: M0 Q100
+├── hedzmorph100q100.wav        # X3 reference: M100 Q100
+├── hedzmorph100q0.wav          # X3 reference: M100 Q0
+└── output/                     # Test output directory
+    ├── test_m0q100.wav
+    ├── test_m0q100_spectrum.csv
+    └── validation_results.json
 ```
 
 ## Test Structure
 
-**C++ Test Pattern:**
-```cpp
-#include "../Source/dsp/CartridgeLoader.h"
-#include <iostream>
-
-int main() {
-    try {
-        // Setup
-        std::cout << "Loading cartridge from talking_hedz_extracted.json...\n";
-        ZPlane::ZPlaneCartridge cart = ZPlane::loadCartridge("talking_hedz_extracted.json");
-
-        // Verification
-        const auto& cell = cart.data[0][0][0];
-        float freqHz = ZPlane::semitoneToHz(cell.freqSemitone);
-
-        // Assertion with pass/fail output
-        if (freqHz > 3500 && freqHz < 3700) {
-            std::cout << "  PASS: Frequency in expected range (3500-3700 Hz)\n";
-        } else {
-            std::cout << "  FAIL: Frequency outside expected range\n";
-            return 1;
-        }
-
-        std::cout << "\n=== ALL TESTS PASSED ===\n";
-        return 0;
-    } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
-        return 1;
-    }
-}
-```
-
-**Python Validation Pattern:**
+**Suite Organization:**
 ```python
-def test_reference_comparison(cart_path, base_path, ref_name, morph, q, transform=0.0):
-    """Compare engine output against reference file (VAL-01, VAL-02)."""
-    print(f"\n{'='*60}")
-    print(f"TEST: {ref_name} (Morph={morph*100:.0f}%, Q={q*100:.0f}%)")
-    print('='*60)
+#!/usr/bin/env python3
+"""
+TRENCH DSP Test Script
 
-    # Load reference audio
-    ref_path = find_reference_file(base_path, ref_name)
-    if ref_path is None:
-        print(f"  SKIP: Reference file not found: {ref_name}")
-        return None
+Tests the formant filter implementation by:
+1. Loading bypassed-pinknoise.wav
+2. Processing through a Python implementation of the filter
+3. Comparing spectral peaks to X3 reference recordings
 
-    ref_audio, sr = load_wav(ref_path)
+Usage:
+    python tools/test_dsp.py
+"""
 
-    # Create engine and generate our response
-    cart = load_cartridge(cart_path)
-    engine = ZPlaneEngine(cart)
-    engine.set_parameters(morph, q, transform)
+def main():
+    print("=" * 70)
+    print("TRENCH DSP Test")
+    print("=" * 70)
 
-    # Generate impulse response
-    impulse = np.zeros(len(ref_audio))
-    impulse[0] = 1.0
-    our_response = engine.process_block(impulse)
+    # Test configurations
+    tests = [
+        ("M0_Q100", 0.0, 1.0, ref_m0_q100, [178, 1077, 1701, 2498, 4915]),
+        ("M100_Q100", 1.0, 1.0, ref_m100_q100, [221, 2417, 2719]),
+        ("M100_Q0", 1.0, 0.0, ref_m100_q0, [215, 2024, 2681, 3047]),
+    ]
 
-    # Calculate RMS error
-    rms_error = calculate_rms_error_db(ref_audio, our_response)
+    all_passed = True
+    for name, morph, q, ref_file, expected_peaks in tests:
+        # Run test...
+        pass
 
-    # Pass/fail criteria
-    print(f"\n  Results:")
-    print(f"    RMS Error: {rms_error:.1f} dB")
-    print(f"    Target: < 3.0 dB")
+    return 0 if all_passed else 1
 
-    if rms_error < 3.0:
-        print(f"    STATUS: PASS")
-        return True
-    else:
-        print(f"    STATUS: FAIL")
-        return False
+if __name__ == "__main__":
+    exit(main())
 ```
 
-## Validation Test IDs
-
-Tests use structured IDs for traceability:
-
-| Test ID | Description | File |
-|---------|-------------|------|
-| VAL-01 | Output matches "hedz - m100q0.wav" within 3dB RMS | `Tests/validate_against_reference.py` |
-| VAL-02 | Output matches "hedz - 5050.wav" within 3dB RMS | `Tests/validate_against_reference.py` |
-| VAL-03 | Morph sweep produces audible vowel-like formant changes | `Tests/validate_against_reference.py` |
-| VAL-04 | Q=0% produces flatter response than Q=100% | `Tests/validate_against_reference.py` |
+**Patterns:**
+- Setup: Load reference files, create filter instances
+- Execute: Process audio through filter
+- Verify: Compare output to reference, check for NaN/Inf
+- Report: Print detailed results with pass/fail status
 
 ## Mocking
 
-**No mocking framework used.**
+**Framework:** None - tests use real DSP implementations
 
-**Pattern for optional dependencies:**
-```python
-try:
-    import matplotlib
-    matplotlib.use('Agg')  # Non-interactive backend
-    import matplotlib.pyplot as plt
-    HAS_MATPLOTLIB = True
-except ImportError:
-    HAS_MATPLOTLIB = False
-    print("Warning: matplotlib not available, plots will be skipped")
-
-# Usage
-def plot_responses():
-    if not HAS_MATPLOTLIB:
-        print("matplotlib not available - skipping plots")
-        return
-    # ... plotting code ...
-```
+**Patterns:**
+- Python reimplements C++ DSP classes for validation:
+  ```python
+  class Biquad:
+      """Direct Form II Transposed biquad filter"""
+      def __init__(self):
+          self.b0 = 1.0
+          self.b1 = 0.0
+          # ...
+  ```
 
 **What to Mock:**
-- Not applicable (no mocking framework)
+- Memory access (for capture tools) uses `pymem` library
+- Audio file I/O uses `scipy.io.wavfile` or `soundfile`
 
 **What NOT to Mock:**
-- Reference audio files (real captured data from Emulator X3)
-- DSP algorithms (need actual computation for validation)
+- DSP algorithms (must match C++ implementation exactly)
+- Reference audio files (golden truth)
 
 ## Fixtures and Factories
 
-**Reference Audio Files:**
-- Location: Project root (`C:/Users/hooki/yup/`)
-- Format: WAV files captured from Emulator X3
-- Naming: `hedz - {morph}{q}.wav` (e.g., `hedz - m100q0.wav`)
-- Gitignored (binary audio files)
-
-**Cartridge Data:**
-- Location: `talking_hedz_extracted.json`
-- Format: JSON with 3 variants x 7 stages x 289 grid cells
-- Generated by: `Scripts/regenerate_cartridge.py`
-
-**Test Data Loading:**
+**Test Data:**
 ```python
-def load_wav(path):
-    """Load WAV file, return (samples, sample_rate)."""
-    if HAS_SOUNDFILE:
-        data, sr = sf.read(str(path))
-        return data.astype(np.float32), sr
-    elif HAS_SCIPY_WAV:
-        sr, data = wavfile.read(str(path))
-        if data.dtype == np.int16:
-            data = data.astype(np.float32) / 32768.0
-        return data, sr
+# Captured coefficients from TalkingHedz.json (validated ground truth)
+M0_Q100 = [
+    {"a1": -1.976510, "r": 0.998242, "flag": 1.0},  # 994 Hz
+    {"a1": -1.938977, "r": 0.998296, "flag": 1.0},  # 1690 Hz
+    {"a1": -1.872895, "r": 0.998353, "flag": 1.0},  # 2485 Hz
+    {"a1": -1.523842, "r": 0.992409, "flag": 1.0},  # 4881 Hz
+    {"a1": -1.997572, "r": 0.998289, "flag": 0.0},  # Lowpass
+]
 
-def find_reference_file(base_path, pattern):
-    """Find reference file with various naming conventions."""
-    candidates = [
-        base_path / pattern,
-        base_path / pattern.replace(" - ", " "),
-        base_path / pattern.replace(" - ", "_"),
-    ]
-    for c in candidates:
-        if c.exists():
-            return c
-    return None
+M100_Q100 = [
+    {"a1": -1.996743, "r": 0.998619, "flag": 1.0},  # 156 Hz
+    # ...
+]
 ```
+
+**Location:**
+- Inline in test scripts (no separate fixtures directory)
+- Reference data in `CLAUDE.md` as source of truth
+- Audio fixtures in `validation/` directory
 
 ## Coverage
 
-**Requirements:** None enforced (no coverage tooling)
+**Requirements:** None enforced
 
-**Implicit Coverage via Validation:**
-- DSP algorithms validated against reference captures
-- Parameter ranges tested (morph 0-100%, Q 0-100%)
-- Edge cases: DC poles, ultrasonic frequencies
+**Current Coverage:**
+- DSP stability: Checks for NaN/Inf in output
+- Spectral accuracy: Compares FFT peaks to reference
+- Level matching: RMS delta within tolerance
+
+**View Coverage:**
+- No coverage tool configured
+- Manual inspection of test output
 
 ## Test Types
 
-**Validation Tests (Primary):**
-- Compare DSP output against reference audio from Emulator X3
-- Pass/fail based on RMS error threshold (typically 3dB)
-- Frequency response comparison via FFT
+**Unit Tests:**
+- Not formally structured as unit tests
+- Individual Python scripts test specific DSP components
+- Example: `test_allpole.py` tests all-pole filter topology
 
-**Smoke Tests:**
-- Cartridge loading succeeds
-- Round-trip conversion accuracy
-- All grid cells populated
+**Integration Tests:**
+- Full processing chain tests in `validate_audio.py`
+- Loads dry audio -> processes through cascade -> compares to reference
 
-**Visual Verification:**
-- Frequency response plots saved as PNG
-- Manual inspection of formant peaks
+**E2E Tests:**
+- Plugin must be built and tested manually in DAW
+- No automated E2E testing framework
 
 ## Common Patterns
 
-**Impulse Response Testing:**
+**Async Testing:**
+Not applicable (synchronous processing)
+
+**Error Testing:**
 ```python
-# Generate impulse
-impulse = np.zeros(num_samples)
-impulse[0] = 1.0
-
-# Process through filter
-response = filter.process_block(impulse)
-
-# Analyze via FFT
-fft_result = np.fft.rfft(response)
-freqs = np.fft.rfftfreq(len(response), 1/sample_rate)
-mag_db = 20 * np.log10(np.abs(fft_result) + 1e-10)
+# Check for NaN/Inf
+if np.any(np.isnan(output)):
+    print("  ERROR: Output contains NaN!")
+    all_passed = False
+    continue
+if np.any(np.isinf(output)):
+    print("  ERROR: Output contains Inf!")
+    all_passed = False
+    continue
 ```
 
-**RMS Error Calculation:**
+**Spectral Comparison:**
 ```python
-def calculate_rms_error_db(ref, test):
-    """Calculate RMS error in dB between two signals."""
-    min_len = min(len(ref), len(test))
-    ref = ref[:min_len]
-    test = test[:min_len]
+def compute_spectral_error(test_samples, ref_samples, sample_rate,
+                           freq_lo=100.0, freq_hi=8000.0):
+    """Compute spectral error between test and reference."""
+    freqs_t, spec_t = compute_spectrum_db(test_samples[:n], sample_rate)
+    freqs_r, spec_r = compute_spectrum_db(ref_samples[:n], sample_rate)
 
-    diff = ref - test
-    rms_diff = np.sqrt(np.mean(diff ** 2))
-    rms_ref = np.sqrt(np.mean(ref ** 2))
+    mask = (freqs_t >= freq_lo) & (freqs_t <= freq_hi)
+    error_db = np.abs(spec_t - spec_r)
 
-    if rms_ref < 1e-10:
-        return float('inf')
+    mean_error = np.mean(error_db[mask])
+    max_error = np.max(error_db[mask])
 
-    return 20 * np.log10(rms_diff / rms_ref)
+    return mean_error, max_error, freqs_t, error_db
 ```
-
-**Peak Detection:**
-```python
-from scipy.signal import find_peaks
-
-peaks, _ = find_peaks(magnitude_db, height=-20)
-for p in peaks[:5]:
-    print(f"  {freqs[p]:.0f} Hz: {magnitude_db[p]:.1f} dB")
-```
-
-**Test Result Aggregation:**
-```python
-def main():
-    results = []
-
-    # Run tests
-    results.append(("VAL-01", test_reference_comparison(...)))
-    results.append(("VAL-02", test_reference_comparison(...)))
-    results.append(("VAL-03", test_morph_sweep(...)))
-    results.append(("VAL-04", test_q_behavior(...)))
-
-    # Summary
-    passed = sum(1 for _, r in results if r)
-    total = len(results)
-
-    for name, result in results:
-        status = "PASS" if result else "FAIL"
-        print(f"  {name}: {status}")
-
-    print(f"\n  Total: {passed}/{total} tests passed")
-    return 0 if passed == total else 1
-```
-
-## Writing New Tests
-
-**For C++ functionality:**
-1. Create `Tests/test_<feature>.cpp`
-2. Include necessary headers from `Source/`
-3. Use try/catch with return codes
-4. Print PASS/FAIL for each assertion
-5. Compile with: `g++ -std=c++17 -I../Source test_<feature>.cpp -o test_<feature>.exe`
-
-**For Python validation:**
-1. Create function `test_<feature>(...)` returning bool
-2. Print structured output with test name header
-3. Use numerical thresholds for pass/fail
-4. Add to results list in `main()`
-5. Generate plots if useful for debugging
 
 **Pass/Fail Criteria:**
-- RMS error < 3dB for audio comparison
-- Frequency within semitone tolerance for formant matching
-- Boolean assertions for structural validation
+```python
+# From validate_audio.py
+passed = result['mean_spectral_error_db'] < 3.0 and abs(result['rms_delta_db']) < 1.0
+print(f"PASS: {passed}")
+```
+
+## Validation Workflow
+
+**Audio Comparison Harness:**
+1. Load dry input (`bypassed-pinknoise.wav`)
+2. Process through DSP cascade
+3. Compare to X3 reference recording
+4. Report metrics:
+   - Mean spectral error (100-8000 Hz)
+   - Max spectral error
+   - RMS delta (dB)
+
+**Success Criteria:**
+- Mean spectral error < 3.0 dB
+- RMS delta < 1.0 dB
+- No NaN or Inf in output
+
+**Output Artifacts:**
+- Processed WAV file for manual inspection
+- Spectrum CSV for detailed analysis
+- JSON results file with all metrics
+
+## Command-Line Interface
+
+**Standard Pattern:**
+```python
+def main():
+    parser = argparse.ArgumentParser(description='TRENCH Audio Validation Harness')
+    parser.add_argument('--validation-dir', default='validation')
+    parser.add_argument('--output-dir', default='validation/output')
+    parser.add_argument('--gain-db', type=float, default=12.0)
+    parser.add_argument('--test', choices=['m0q100', 'm100q100', 'both'], default='both')
+    parser.add_argument('--zero-mode', choices=['allpole', 'bandpass', 'matched', 'parametric'])
+
+    args = parser.parse_args()
+    # ...
+```
+
+## Missing Test Infrastructure
+
+**Gaps:**
+- No C++ unit test framework (Catch2, GoogleTest)
+- No CI/CD pipeline for automated testing
+- No code coverage reporting
+- No automated plugin testing (DAW integration)
+- No performance benchmarks
+
+**Recommended Additions:**
+1. Add Catch2 or GoogleTest for C++ unit tests
+2. Create CMake target for running tests
+3. Add GitHub Actions workflow for CI
+4. Consider JUCE's unit test framework
 
 ---
 
-*Testing analysis: 2026-01-20*
+*Testing analysis: 2026-01-27*
