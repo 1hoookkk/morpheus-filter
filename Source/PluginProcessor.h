@@ -206,7 +206,7 @@ private:
 
     // Polar preset interpolation (validated X3 data)
     std::array<PolarStageParams, NUM_STAGES> interpolatePolarStages(double morphValue) const;
-    BiquadCoeffs calculatePolarCoeffs(double a1_polar, double r, int flag) const;
+    BiquadCoeffs calculatePolarCoeffs(double a1_polar, double r, int flag, int stageIndex = -1, double morph = 1.0) const;
     double applyQToRadius(double r_ref, double qNormalized) const;
 
     // Legacy preset interpolation (deprecated)

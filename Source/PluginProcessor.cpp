@@ -395,7 +395,7 @@ void TrenchAudioProcessor::updateCoefficientsFromPolar()
     {
         // Apply Q scaling to radius
         double r_scaled = applyQToRadius(polarStages[i].r, qKnobNorm);
-        currentCoeffs[i] = calculatePolarCoeffs(polarStages[i].a1, r_scaled, polarStages[i].flag, i);
+        currentCoeffs[i] = calculatePolarCoeffs(polarStages[i].a1, r_scaled, polarStages[i].flag, i, morphNorm);
     }
 }
 
@@ -482,7 +482,7 @@ double TrenchAudioProcessor::applyQToRadius(double r_ref, double qNormalized) co
 //==============================================================================
 
 TrenchAudioProcessor::BiquadCoeffs
-TrenchAudioProcessor::calculatePolarCoeffs(double a1_polar, double r, int flag, int stageIndex) const
+TrenchAudioProcessor::calculatePolarCoeffs(double a1_polar, double r, int flag, int stageIndex, double morph) const
 {
     BiquadCoeffs c;
 
@@ -525,9 +525,10 @@ TrenchAudioProcessor::calculatePolarCoeffs(double a1_polar, double r, int flag, 
         double theta = std::acos(cosTheta);
         double freqHz = theta * currentSampleRate / (2.0 * juce::MathConstants<double>::pi);
 
-        // Apply per-stage frequency offset
+        // Apply per-stage frequency offset, scaled by morph parameter
+        // M0 needs zero offsets, M100 needs full offsets, interpolate between
         if (stageIndex >= 0 && stageIndex < 7)
-            freqHz += FREQ_OFFSETS[stageIndex];
+            freqHz += morph * FREQ_OFFSETS[stageIndex];
 
         freqHz = juce::jlimit(20.0, 20000.0, freqHz);
 
@@ -835,7 +836,7 @@ std::vector<float> TrenchAudioProcessor::getFrequencyResponse() const
         for (int i = 0; i < NUM_STAGES; ++i)
         {
             double r_scaled = applyQToRadius(polarStages[i].r, qKnobNorm);
-            coeffs[i] = calculatePolarCoeffs(polarStages[i].a1, r_scaled, polarStages[i].flag, i);
+            coeffs[i] = calculatePolarCoeffs(polarStages[i].a1, r_scaled, polarStages[i].flag, i, morphNorm);
         }
     }
     else
