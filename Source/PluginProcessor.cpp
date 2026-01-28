@@ -495,30 +495,29 @@ TrenchAudioProcessor::calculatePolarCoeffs(double a1_polar, double r, int flag, 
     {
         // PEAKING EQ (Parametric Resonator)
         //
-        // VALIDATED 2026-01-28: Optimal parameters from Python spectral analysis:
-        //   Q_SCALE = 0.08 (captured r values give Q~360, actual X3 uses ~30)
-        //   GAIN_DB = 34.0 (strong boost at formant frequencies)
-        //
-        // With these settings + frequency offsets:
-        //   M0_Q100:   ~7.0 dB spectral error vs X3
-        //   M100_Q100: ~7.6 dB spectral error vs X3
-        //
-        // Previous 12 dB gain with no Q scaling gave ~14 dB error.
+        // VALIDATED 2026-01-28: UNIFIED gains + interpolated offsets
+        //   - Unified gains prevent wild level swings during morph (was 37+ dB, now 9.7 dB)
+        //   - Offsets interpolated for spectral shape
+        //   - Output compensation applied in processBlock for level matching
+        //   - Q_SCALE = 0.08 (captured r values give Q~360, actual X3 uses ~30)
+        //   - M0_Q100 spectral error: 7.72 dB vs X3
+        //   - M100_Q100 spectral error: 7.17 dB vs X3
 
         constexpr double Q_SCALE = 0.08;  // Scale down extreme Q from captured radius
-        constexpr double GAIN_DB = 34.0;  // Strong boost at formant peaks
 
-        // Per-stage frequency offsets (calibrated for M100_Q100)
-        // Captured coefficients decode to frequencies that don't match X3 peaks
-        // These offsets compensate for cascade/Q interaction effects
-        static constexpr double FREQ_OFFSETS[7] = {
-            65.0,   // Stage 0: 156 Hz → 221 Hz (X3 peak)
-            150.0,  // Stage 1: 2262 Hz → 2412 Hz
-            62.0,   // Stage 2: 2662 Hz → 2724 Hz
-            0.0,    // Stage 3: 4793 Hz (no offset)
-            0.0,    // Stage 4 (usually lowpass)
-            0.0,    // Stage 5
-            0.0     // Stage 6
+        // UNIFIED gains (same for all morph positions - prevents level instability)
+        static constexpr double UNIFIED_GAINS_DB[5] = {
+            31.87, 30.91, 33.11, 30.54, 0.0
+        };
+
+        // M0 offsets (Hz) - optimize spectral shape at morph=0%
+        static constexpr double M0_OFFSETS[5] = {
+            140.3, 30.7, 18.4, 23.6, 0.0
+        };
+
+        // M100 offsets (Hz) - optimize spectral shape at morph=100%
+        static constexpr double M100_OFFSETS[5] = {
+            67.4, 138.4, 51.0, 196.9, 0.0
         };
 
         // Decode frequency from polar: cos(theta) = -a1_polar / (2*r)
@@ -527,11 +526,16 @@ TrenchAudioProcessor::calculatePolarCoeffs(double a1_polar, double r, int flag, 
         double theta = std::acos(cosTheta);
         double freqHz = theta * currentSampleRate / (2.0 * juce::MathConstants<double>::pi);
 
-        // Apply per-stage frequency offset, scaled by morph parameter
-        // M0 needs zero offsets, M100 needs full offsets, interpolate between
-        if (stageIndex >= 0 && stageIndex < 7)
-            freqHz += morph * FREQ_OFFSETS[stageIndex];
+        // Unified gain + interpolated offset
+        double gainDB = (stageIndex >= 0 && stageIndex < 5) ? UNIFIED_GAINS_DB[stageIndex] : 32.0;
+        double freqOffset = 0.0;
+        if (stageIndex >= 0 && stageIndex < 5)
+        {
+            // Linear interpolation of offsets between M0 and M100
+            freqOffset = M0_OFFSETS[stageIndex] + morph * (M100_OFFSETS[stageIndex] - M0_OFFSETS[stageIndex]);
+        }
 
+        freqHz += freqOffset;
         freqHz = juce::jlimit(20.0, 20000.0, freqHz);
 
         // Q from radius - SCALED DOWN
@@ -541,8 +545,8 @@ TrenchAudioProcessor::calculatePolarCoeffs(double a1_polar, double r, int flag, 
         Q = Q * Q_SCALE;
         Q = juce::jlimit(0.5, 100.0, Q);
 
-        // RBJ peaking EQ formula with validated gain
-        c = calculatePeakingCoeffs(freqHz, Q, GAIN_DB);
+        // RBJ peaking EQ formula with unified gain
+        c = calculatePeakingCoeffs(freqHz, Q, gainDB);
     }
     else
     {
@@ -745,6 +749,16 @@ void TrenchAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         return;  // Skip all filter processing in test mode
     }
 
+    // Get morph value once per block for compensation calculation
+    const float morphNorm = morphParam->load() / 100.0f;
+
+    // LEVEL COMPENSATION: Match X3 output levels across morph range
+    // Without compensation: level varies 9.7 dB (M0 is quieter than M100)
+    // X3 maintains ~0.6 dB level variation across morph
+    // Formula derived from unified gains optimization: comp_dB = 9.43 - 9.70 * morph
+    const double compensationDB = 9.43 - 9.70 * morphNorm;
+    const double compensationLinear = std::pow(10.0, compensationDB / 20.0);
+
     // Process using biquad cascade (cube/polar mode)
     for (int s = 0; s < numSamples; ++s)
     {
@@ -791,7 +805,10 @@ void TrenchAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
             // Soft clip at ±2.0 to match H-chip bit-width limits
             x = std::tanh(x * 0.5) * 2.0;
 
-            // 5. MAKEUP GAIN (compensate for -7dB input + saturation)
+            // 5. LEVEL COMPENSATION (match X3 output levels across morph)
+            x *= compensationLinear;
+
+            // 6. MAKEUP GAIN (compensate for -7dB input + saturation)
             x *= 2.24;  // +7dB to restore nominal level
 
             // Wet/dry mix
