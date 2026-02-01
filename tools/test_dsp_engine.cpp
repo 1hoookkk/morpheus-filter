@@ -149,6 +149,41 @@ static void writeWavMono16(const std::string& path, const std::vector<float>& x,
 }
 
 // ==============================================================================
+// Pink noise generator (1/f spectrum)
+// ==============================================================================
+
+static std::vector<float> generatePinkNoise(int numSamples)
+{
+    // Voss-McCartney algorithm (7-octave bank)
+    std::vector<float> output;
+    output.reserve(numSamples);
+
+    double b0 = 0.0, b1 = 0.0, b2 = 0.0, b3 = 0.0, b4 = 0.0, b5 = 0.0, b6 = 0.0;
+
+    for (int i = 0; i < numSamples; i++)
+    {
+        // Generate white noise
+        double white = (static_cast<double>(rand()) / RAND_MAX) * 2.0 - 1.0;
+
+        // Update octave generators
+        b0 = 0.99886 * b0 + white * 0.0555179;
+        b1 = 0.99332 * b1 + white * 0.0750759;
+        b2 = 0.96900 * b2 + white * 0.1538520;
+        b3 = 0.86650 * b3 + white * 0.3104856;
+        b4 = 0.55000 * b4 + white * 0.5329522;
+        b5 = -0.7616 * b5 - white * 0.0168980;
+
+        double pink = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
+        b6 = white * 0.115926;
+
+        // Normalize to approximately ±1.0
+        output.push_back(static_cast<float>(pink * 0.11));
+    }
+
+    return output;
+}
+
+// ==============================================================================
 // MAIN TEST
 // ==============================================================================
 
@@ -161,14 +196,18 @@ int main()
         std::cout << "Phase 2 Requirements Validation\n";
         std::cout << "========================================\n\n";
 
-        // 1. Load pink noise input
-        std::cout << "Loading pink noise input...\n";
-        int sampleRate = 0;
-        std::vector<float> input = readWavMono16("validation/bypassed-pinknoise.wav", sampleRate);
+        // 1. Generate pink noise input
+        std::cout << "Generating pink noise input...\n";
+        const int sampleRate = 44100;
+        const int durationSeconds = 3;
+        const int numSamples = sampleRate * durationSeconds;
+
+        srand(12345);  // Fixed seed for reproducibility
+        std::vector<float> input = generatePinkNoise(numSamples);
 
         std::cout << "  Sample rate: " << sampleRate << " Hz\n";
-        std::cout << "  Duration: " << input.size() / double(sampleRate) << " seconds\n";
-        std::cout << "  Samples: " << input.size() << "\n\n";
+        std::cout << "  Duration: " << durationSeconds << " seconds\n";
+        std::cout << "  Samples: " << numSamples << "\n\n";
 
         // 2. Create filter at M0_Q100 (resonant "Ah" vowel)
         std::cout << "Initializing ZPlaneFilter at M0_Q100 (resonant 'Ah' vowel)...\n";
