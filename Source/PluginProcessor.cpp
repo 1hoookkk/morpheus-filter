@@ -231,6 +231,21 @@ void TrenchAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     // trenchFilterL.prepare(static_cast<float>(sampleRate));
     // trenchFilterR.prepare(static_cast<float>(sampleRate));
 
+    // =========================================================================
+    // Z-PLANE HARDWARE ENGINE INITIALIZATION
+    // =========================================================================
+    zPlaneLeft.prepare(sampleRate);
+    zPlaneRight.prepare(sampleRate);
+
+    // Start with M0_Q100 (resonant "Ah" vowel)
+    zPlaneLeft.setParameters(0.0, 1.0);   // morph=0%, q=100%
+    zPlaneRight.setParameters(0.0, 1.0);
+
+    // DEBUG OSCILLATOR DISABLED - Using external audio input
+    // Set to true to generate internal F3 sawtooth (179 Hz) for testing
+    zPlaneLeft.setDebugOscillator(false);
+    zPlaneRight.setDebugOscillator(false);
+
     // Reset biquad states
     for (auto& state : biquadStatesL)
         state = BiquadState{};
@@ -707,6 +722,9 @@ TrenchAudioProcessor::calculatePoleCoeffs(double a1, double r, double qOffset) c
 void TrenchAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                                          juce::MidiBuffer& midiMessages)
 {
+    // DSP-04 COMPLIANCE: Denormal protection (processor level)
+    // ScopedNoDenormals MUST be first line before any audio processing
+    // Filter-level protection: BiquadDFI::process() flushes denormals per-stage
     juce::ScopedNoDenormals noDenormals;
     juce::ignoreUnused(midiMessages);
 
@@ -720,7 +738,9 @@ void TrenchAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     const float mixAmount = mixParam->load() / 100.0f;      // 0-1
     const float outputGain = std::pow(10.0f, outputParam->load() / 20.0f);  // dB to linear
 
-    // If bypassed, just apply output gain and return
+    // DSP-01 COMPLIANCE: Bypass functionality
+    // Early return skips all filter processing when bypassed
+    // Audio passes unchanged except for output gain scaling
     if (bypassed)
     {
         buffer.applyGain(outputGain);
@@ -748,6 +768,50 @@ void TrenchAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         }
         return;  // Skip all filter processing in test mode
     }
+
+    // =========================================================================
+    // Z-PLANE HARDWARE ENGINE ROUTING
+    // =========================================================================
+    if (useZPlaneEngine)
+    {
+        // Get parameters (0.0 to 1.0)
+        const float morphNorm = morphParam->load() / 100.0f;  // 0-100% → 0-1
+        const float qNorm = qParam->load() / 100.0f;          // 0-100% → 0-1
+
+        // DSP-05 COMPLIANCE: Control-rate coefficient updates
+        // setParameters called ONCE per processBlock (not per-sample)
+        // Block-rate (128-512 samples) is adequate for smooth parameter changes
+        zPlaneLeft.setParameters(morphNorm, qNorm);
+        zPlaneRight.setParameters(morphNorm, qNorm);
+
+        // Process audio through Z-Plane engine (separate L/R for proper stereo)
+        for (int sample = 0; sample < numSamples; ++sample)
+        {
+            if (numChannels >= 1)
+            {
+                auto* leftChannel = buffer.getWritePointer(0);
+                double inL = leftChannel[sample];
+                double outL = zPlaneLeft.processSample(inL);
+                leftChannel[sample] = static_cast<float>(outL);
+            }
+
+            if (numChannels >= 2)
+            {
+                auto* rightChannel = buffer.getWritePointer(1);
+                double inR = rightChannel[sample];
+                double outR = zPlaneRight.processSample(inR);
+                rightChannel[sample] = static_cast<float>(outR);
+            }
+        }
+
+        // Apply output gain
+        buffer.applyGain(outputGain);
+        return;  // Skip old 7-stage processing
+    }
+
+    // =========================================================================
+    // OLD 7-STAGE PROCESSING (Fallback)
+    // =========================================================================
 
     // Get morph value once per block for compensation calculation
     const float morphNorm = morphParam->load() / 100.0f;
