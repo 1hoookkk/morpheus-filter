@@ -40,7 +40,8 @@ target_sources(TRENCH
     PRIVATE
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp
-        Source/DSP/WavCubeLoader.cpp)
+        Source/DSP/WavCubeLoader.cpp
+        Source/DSP/ZPlaneFilter.cpp)
 
 # Link JUCE modules and binary data
 target_link_libraries(TRENCH
@@ -67,3 +68,63 @@ target_compile_definitions(TRENCH
 target_include_directories(TRENCH
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/Source)
+
+# -----------------------------------------------------------------------------
+# Offline DSP runner (no audio device needed)
+# Writes tools/output_*.wav for comparison against validation/*.wav
+# -----------------------------------------------------------------------------
+add_executable(dsp_runner
+    tools/dsp_runner.cpp
+    Source/DSP/ZPlaneFilter.cpp)
+
+target_include_directories(dsp_runner
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/Source)
+
+target_link_libraries(dsp_runner
+    PRIVATE
+        juce::juce_audio_basics
+        juce::juce_core
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags)
+
+# -----------------------------------------------------------------------------
+# Morph sweep renderer (for X3 comparison)
+# Renders smooth morph from M0 to M100 over 10 seconds
+# -----------------------------------------------------------------------------
+add_executable(morph_sweep
+    tools/render_morph_sweep.cpp
+    Source/DSP/ZPlaneFilter.cpp)
+
+target_include_directories(morph_sweep
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/Source)
+
+target_link_libraries(morph_sweep
+    PRIVATE
+        juce::juce_audio_basics
+        juce::juce_core
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags)
+
+# -----------------------------------------------------------------------------
+# DSP Engine Functional Test (Phase 2)
+# Validates 5-stage cascade with pink noise input
+# -----------------------------------------------------------------------------
+add_executable(test_dsp_engine
+    tools/test_dsp_engine.cpp
+    Source/DSP/ZPlaneFilter.cpp)
+
+target_include_directories(test_dsp_engine
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/Source)
+
+target_link_libraries(test_dsp_engine
+    PRIVATE
+        juce::juce_audio_basics
+        juce::juce_core
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags)
