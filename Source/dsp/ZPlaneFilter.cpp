@@ -39,14 +39,13 @@
     - Peak gain diagnostic output [lines 523-560]
     ACTION: Conditionalize under ZPLANE_DEBUG flag (Task 3)
 
-    VIOLATES SPEC - MUST REMOVE ❌:
-    - srCompensationPower member variable [ZPlaneFilter.h line 106]
-    - Sample rate compensation initialization [lines 119-125]
-    - Sample rate compensation applied to radius [lines 264-269]
-    - srCompensationPower condition in DC pole normalization [line 351]
-    - Experimental high-SR support comments [lines 122-124]
+    REMOVED (Task 2) ✅:
+    - srCompensationPower member variable (was ZPlaneFilter.h line 106)
+    - Sample rate compensation initialization (was lines 119-125)
+    - Sample rate compensation applied to radius (was lines 264-269)
+    - srCompensationPower condition in DC pole normalization (was line 351)
+    - Experimental high-SR support comments (was lines 122-124)
     REASON: CONTEXT.md Section 8 explicitly requires removal of all srCompensationPower code
-    ACTION: Complete removal (Task 2)
 
   ==============================================================================
 */
@@ -139,18 +138,11 @@ void ZPlaneFilter::prepare(double newSampleRate)
         static bool warningShown = false;
         if (!warningShown) {
             printf("WARNING: TRENCH Z-Plane filter optimized for 44.1/48kHz.\n");
-            printf("         Using coefficients at %.0f Hz may cause formant shifts.\n", sampleRate);
-            printf("         For accurate emulation, use 44.1kHz or 48kHz.\n");
+            printf("         Using at %.0f Hz may cause formant frequency shifts.\n", sampleRate);
+            printf("         For accurate emulation, use 44.1kHz or 48kHz sample rate.\n");
             warningShown = true;
         }
     }
-
-    // Disable sample rate compensation (44.1k/48k mode)
-    srCompensationPower = 1.0;
-
-    // Note: If you want to experiment with high SR support, uncomment:
-    // if (sampleRate > 130000.0) srCompensationPower = 0.25;  // 192k
-    // else if (sampleRate > 65000.0) srCompensationPower = 0.5;  // 96k
 
     reset();
     updateCoefficients(0.0, 1.0);  // Initialize to M0_Q100
@@ -280,23 +272,6 @@ void ZPlaneFilter::updateCoefficients(double morph, double q)
 
         // Calculate biquad coefficients
         double r = std::min(curr.radius, MAX_RADIUS);
-
-        // ==============================================================
-        // SAMPLE RATE COMPENSATION (E-mu G-Chip behavior)
-        // ==============================================================
-        // Per E-mu documentation (Source 852):
-        // - Apply sqrt to radius at 88.2k, sqrt² at 176.4k
-        // - This maintains resonance decay time at high sample rates
-        // - NOTE: Frequency (a1) is NOT compensated in this version
-        //   (formants will shift to higher Hz at high SR - testing needed)
-
-        if (srCompensationPower < 1.0) {
-            // RADIUS compensation ONLY: sqrt(damping) to reduce Q
-            double damping = 1.0 - r;
-            damping = std::pow(damping, srCompensationPower);
-            r = 1.0 - damping;
-        }
-
         double a2 = r * r;
 
         // ==============================================================
@@ -372,12 +347,10 @@ void ZPlaneFilter::updateCoefficients(double morph, double q)
             double b1 = a1 + curr.val2;   // Allpass + resonator
             double b2 = a2 - curr.val3;   // Allpass - resonator (note sign!)
 
-            // CRITICAL: DC Pole Normalization (missing from previous implementation!)
+            // CRITICAL: DC Pole Normalization
             // When pole is near DC (a1 ≈ -2, a2 ≈ 1), scale numerator to prevent explosion
-            // NOTE: Disabled when sample rate compensation is active, as sqrt radius
-            // reduction can artificially trigger DC detection
             double dc_denom = 1.0 + a1 + a2;  // Use clamped a1
-            if (std::abs(dc_denom) < 0.01 && srCompensationPower == 1.0) {
+            if (std::abs(dc_denom) < 0.01) {
                 // DC pole detected - normalize to prevent extreme gain
                 double dc_numer = b0 + b1 + b2;
                 if (std::abs(dc_numer) > 0.001) {
