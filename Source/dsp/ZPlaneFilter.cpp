@@ -309,29 +309,27 @@ void ZPlaneFilter::updateCoefficients(double morph, double q)
 
         if (curr.isLowpass) {
             // ==============================================================
-            // LOWPASS STAGE (flag = 0) - RBJ 15kHz Lowpass
+            // STAGE 4: ALLPOLE with captured pole positions (FIXED 2026-02-01)
             // ==============================================================
-            // From golden_master_talking_hedz.py (WORKS!)
-            // Uses standard RBJ lowpass at 15kHz, NOT the captured pole positions
-            constexpr double freq_lp = 15000.0;
-            constexpr double PI = 3.14159265358979323846;
-            double omega = 2.0 * PI * freq_lp / sampleRate;
-            constexpr double Q_lp = 0.707;
-            double alpha = std::sin(omega) / (2.0 * Q_lp);
+            // Stage 4 has golden master data for a1 and radius:
+            // - M0_Q100:   a1=-1.997652, r=0.998292  (near DC resonance)
+            // - M0_Q0:     a1=-1.981336, r=0.982433
+            // - M100_Q100: a1=-1.939599, r=0.998170
+            // - M100_Q0:   a1=-1.911181, r=0.993167
+            //
+            // These pole positions create DC resonance that provides warmth/body.
+            // Numerator: Pure allpole (b0=1, b1=0, b2=0) - no zeros
+            //
+            // BUG FIX: Previous RBJ lowpass at 15kHz was transparent in low end,
+            // causing spectral analysis to show -30 to -43 dB deficit 30-300 Hz
 
-            double b0_lp = (1.0 - std::cos(omega)) / 2.0;
-            double b1_lp = 1.0 - std::cos(omega);
-            double b2_lp = (1.0 - std::cos(omega)) / 2.0;
-            double a0_lp = 1.0 + alpha;
-            double a1_lp = -2.0 * std::cos(omega);
-            double a2_lp = 1.0 - alpha;
-
-            // Note: Lowpass uses its own a1_lp, not the clamped a1
-            stages[i].b0 = b0_lp / a0_lp;
-            stages[i].b1 = b1_lp / a0_lp;
-            stages[i].b2 = b2_lp / a0_lp;
-            stages[i].a1 = a1_lp / a0_lp;
-            stages[i].a2 = a2_lp / a0_lp;
+            // Use captured poles (already computed in a1, a2)
+            // Allpole numerator: no zeros, just unity gain
+            stages[i].b0 = 1.0;
+            stages[i].b1 = 0.0;
+            stages[i].b2 = 0.0;
+            stages[i].a1 = a1;  // Use clamped a1 from captured data
+            stages[i].a2 = a2;  // radius²
 
         } else {
             // ==============================================================
