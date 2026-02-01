@@ -33,11 +33,12 @@
     - Q bandwidth compensation for flat corners [lines 408-420]
     - Direct Form I biquad processing [ZPlaneFilter.h lines 64-81]
 
-    EXPERIMENTAL/DEBUG CODE ⚠️:
-    - Debug printf blocks for normalization diagnostics [lines 422-440]
-    - Debug printf blocks for M100 corner coefficients [lines 447-471]
-    - Peak gain diagnostic output [lines 523-560]
-    ACTION: Conditionalize under ZPLANE_DEBUG flag (Task 3)
+    DEBUG CODE (conditionalized - Task 3) ✅:
+    - ZPLANE_DEBUG flag added (default 0) [line 58]
+    - Debug printf blocks for normalization diagnostics [wrapped]
+    - Debug printf blocks for M100 corner coefficients [wrapped]
+    - Peak gain diagnostic output [wrapped]
+    NOTE: Set ZPLANE_DEBUG=1 to enable diagnostic output during development
 
     REMOVED (Task 2) ✅:
     - srCompensationPower member variable (was ZPlaneFilter.h line 106)
@@ -53,6 +54,11 @@
 #include "ZPlaneFilter.h"
 #include <complex>
 #include <set>
+
+// Debug output control (set to 1 to enable diagnostic printf statements)
+#ifndef ZPLANE_DEBUG
+#define ZPLANE_DEBUG 0
+#endif
 
 // ==============================================================================
 // GOLDEN MASTER DATA (from CLAUDE.md 2026-01-28)
@@ -421,6 +427,7 @@ void ZPlaneFilter::updateCoefficients(double morph, double q)
         currentBoost *= qBandwidthComp;
     }
 
+#if ZPLANE_DEBUG
     // Debug: Show normalization details
     static int debugCount = 0;
     if (debugCount < 8) {  // Show all 4 corners (2 calls each)
@@ -440,12 +447,14 @@ void ZPlaneFilter::updateCoefficients(double morph, double q)
                currentBoost, expectedPeak, 20.0 * std::log10(expectedPeak + 1e-12));
         debugCount++;
     }
+#endif
 
     // Apply boost to FIRST stage numerator ONLY
     stages[0].b0 *= currentBoost;
     stages[0].b1 *= currentBoost;
     stages[0].b2 *= currentBoost;
 
+#if ZPLANE_DEBUG
     // Debug: Print coefficients for M100 corners
     if (std::abs(morph - 1.0) < 0.01) {
         static bool printed_q1 = false;
@@ -471,6 +480,7 @@ void ZPlaneFilter::updateCoefficients(double morph, double q)
             printed_q0 = true;
         }
     }
+#endif
 }
 
 double ZPlaneFilter::computeCascadePeakGain() const
@@ -521,6 +531,7 @@ double ZPlaneFilter::computeCascadePeakGain() const
         }
     }
 
+#if ZPLANE_DEBUG
     // DIAGNOSTIC OUTPUT: Print for first 4 unique corners
     static std::set<std::string> printedCorners;
     static int totalCalls = 0;
@@ -560,6 +571,7 @@ double ZPlaneFilter::computeCascadePeakGain() const
             printf("=====================================================\n");
         }
     }
+#endif
 
     return maxMag;
 }
