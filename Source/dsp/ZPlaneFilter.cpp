@@ -57,7 +57,7 @@
 
 // Debug output control (set to 1 to enable diagnostic printf statements)
 #ifndef ZPLANE_DEBUG
-#define ZPLANE_DEBUG 0
+#define ZPLANE_DEBUG 0  // Disabled for production
 #endif
 
 // ==============================================================================
@@ -375,74 +375,59 @@ void ZPlaneFilter::updateCoefficients(double morph, double q)
     }
 
     // ==============================================================
-    // FREQUENCY-DOMAIN GAIN NORMALIZATION
+    // FREQUENCY-DOMAIN GAIN NORMALIZATION (RMS-BASED)
     // ==============================================================
-    // DC normalization (lines 277-288) crushes numerator coefficients
-    // for high-radius poles, making peakGain very small (~0.000003).
+    // PROBLEM (Feb 2, 2026): Peak-based normalization doesn't account for
+    // total energy distribution. Broad filters (Q0) have lower peaks but
+    // MORE total energy than resonant filters (Q100).
     //
-    // SOLUTION: Lower threshold to catch DC-crushed peaks.
-    // Target: Normalize so peakGain × rawBoost ≈ 0.01 (unity in practice)
+    // SOLUTION: Use RMS of frequency response magnitude instead of peak.
+    // This properly accounts for energy distribution across the spectrum.
 
-    // Compute peak gain BEFORE applying boost
-    double peakGain = computeCascadePeakGain();
-    double maxGainWithBoost = peakGain * rawBoost;
+    // Compute RMS gain BEFORE applying boost
+    double rmsGain = computeCascadeRMSGain();
+    double rmsGainWithBoost = rmsGain * rawBoost;
 
     currentBoost = rawBoost;
 
-    // Normalize if peak×boost exceeds threshold
-    // Observed peak gains (WITHOUT boost):
-    // - Q100: ~20k (86 dB) - high resonance
-    // - Q0: ~13k (82 dB) - broader, lower peak
-    // After boost (×1.76): 23k-36k
+    // Normalize to target RMS gain
+    // Target calibrated empirically from X3 reference (Feb 2, 2026):
+    // X3 M0_Q100: input -25.2 dB → output -26.2 dB (gain = -1.0 dB = 0.888x)
     //
-    // Target: Normalize to 10.0 for -20 dB RMS output
-    constexpr double PEAK_THRESHOLD = 1.0;   // Always normalize (peaks are 1000s)
-    constexpr double TARGET_PEAK = 10.0;     // Empirically matches -20 dB RMS
+    // RMS gains vary wildly (61-110 dB) due to different spectral shapes.
+    // Strategy: Normalize to produce correct output level with pink noise input.
+    //
+    // Observed with TARGET=1.0:
+    // - M0_Q100: -23.4 dB (2.8 dB too loud)
+    // - M100_Q100: -25.4 dB (0.8 dB too loud)
+    // Target reduced by 2.8 dB (0.724x) to match X3
+    constexpr double TARGET_RMS_GAIN = 0.724;  // Calibrated for -26 dB RMS output
 
-    if (maxGainWithBoost > PEAK_THRESHOLD) {
-        double normFactor = TARGET_PEAK / maxGainWithBoost;
+    if (rmsGainWithBoost > 0.001) {  // Safety check for non-zero
+        double normFactor = TARGET_RMS_GAIN / rmsGainWithBoost;
         currentBoost *= normFactor;
     }
 
-    // Step 2: Q-dependent bandwidth compensation (ONLY for low-Q corners)
-    // Q0 (flat) has MUCH wider bandwidth than Q100 (resonant)
-    // - M0_Q0: peak=13k, needs -15 dB compensation
-    // - M100_Q0: peak=175, needs -22 dB compensation (much broader!)
-    //
-    // Use a NON-LINEAR taper based on observed peak gain:
-    // Low peak → broader response → more attenuation needed
+    // Q-dependent fine-tuning (empirical adjustment)
+    // Q0 (flat) corners have broader bandwidth, interact differently with pink noise
     if (q < 0.5) {
-        // Empirical formula: more attenuation for lower peaks
-        // This automatically handles the M0 vs M100 difference
-        double qBandwidthComp;
-        if (peakGain < 500.0) {
-            // Very broad (M100_Q0): -22 dB
-            qBandwidthComp = 0.079;  // 10^(-22/20) = 0.079
-        } else {
-            // Moderately broad (M0_Q0): -15 dB
-            qBandwidthComp = 0.178;  // 10^(-15/20) = 0.178
-        }
-        currentBoost *= qBandwidthComp;
+        // Observed: M0_Q0 still 8 dB too loud even after RMS normalization
+        // Need stronger attenuation than Q100 corners
+        currentBoost *= 0.5;  // -6 dB additional attenuation
     }
 
 #if ZPLANE_DEBUG
     // Debug: Show normalization details
     static int debugCount = 0;
     if (debugCount < 8) {  // Show all 4 corners (2 calls each)
-        double expectedPeak = peakGain * currentBoost;
-        bool normTriggered = (maxGainWithBoost > PEAK_THRESHOLD);
+        double expectedRMS = rmsGain * currentBoost;
 
-        printf("  [Normalization] peak=%.1f (%.1f dB), rawBoost=%.6f\n",
-               peakGain, 20.0 * std::log10(peakGain + 1e-12), rawBoost);
-        printf("  [Threshold] peakWithBoost=%.1f → %s to target=%.1f\n",
-               maxGainWithBoost, normTriggered ? "NORMALIZE" : "skip", TARGET_PEAK);
-        if (q < 0.5) {
-            double qComp = (peakGain < 500.0) ? 0.079 : 0.178;
-            printf("  [Q-BW-Comp] q=%.2f, peak=%.0f → %.3fx (%.1f dB)\n",
-                   q, peakGain, qComp, 20.0 * std::log10(qComp));
-        }
-        printf("  [Result] finalBoost=%.6f, expectedPeak=%.1f (%.1f dB)\n",
-               currentBoost, expectedPeak, 20.0 * std::log10(expectedPeak + 1e-12));
+        printf("  [Normalization RMS-based] rmsGain=%.6f (%.1f dB), rawBoost=%.6f\n",
+               rmsGain, 20.0 * std::log10(rmsGain + 1e-12), rawBoost);
+        printf("  [Target] rmsWithBoost=%.6f → NORMALIZE to target=%.1f\n",
+               rmsGainWithBoost, TARGET_RMS_GAIN);
+        printf("  [Result] finalBoost=%.6f, expectedRMS=%.6f (%.1f dB)\n",
+               currentBoost, expectedRMS, 20.0 * std::log10(expectedRMS + 1e-12));
         debugCount++;
     }
 #endif
@@ -481,10 +466,53 @@ void ZPlaneFilter::updateCoefficients(double morph, double q)
 #endif
 }
 
+double ZPlaneFilter::computeCascadeRMSGain() const
+{
+    // RMS-based normalization (Feb 2, 2026)
+    // RATIONALE: Peak-based normalization doesn't account for total energy.
+    // Broad filters (Q0) have lower peaks but MORE total energy than resonant (Q100).
+    // Solution: Use RMS of |H(ω)| across frequency grid.
+    constexpr int NUM_FREQS = 1024;
+    constexpr double PI = 3.14159265358979323846;
+
+    double sumMagSquared = 0.0;
+
+    for (int k = 0; k < NUM_FREQS; k++)
+    {
+        // CRITICAL: ENDPOINT EXCLUDED grid (matches scipy)
+        double omega = PI * static_cast<double>(k) / static_cast<double>(NUM_FREQS);
+
+        // z^-1 = exp(-j*omega)
+        std::complex<double> z1(std::cos(omega), -std::sin(omega));
+        std::complex<double> z2 = z1 * z1;
+
+        // Cascade all 5 stages
+        std::complex<double> H_total(1.0, 0.0);
+
+        for (int i = 0; i < 5; i++)
+        {
+            const BiquadDFI& stage = stages[i];
+            std::complex<double> numer = stage.b0 + stage.b1 * z1 + stage.b2 * z2;
+            std::complex<double> denom(1.0, 0.0);
+            denom += stage.a1 * z1;
+            denom += stage.a2 * z2;
+
+            std::complex<double> H_stage = numer / denom;
+            H_total *= H_stage;
+        }
+
+        double mag = std::abs(H_total);
+        sumMagSquared += mag * mag;
+    }
+
+    // RMS = sqrt(mean of squared magnitudes)
+    return std::sqrt(sumMagSquared / NUM_FREQS);
+}
+
 double ZPlaneFilter::computeCascadePeakGain() const
 {
-    // Evaluate cascade frequency response using std::complex
-    // CRITICAL: Must match scipy.signal.sosfreqz EXACTLY
+    // LEGACY: Peak-based normalization (before Feb 2, 2026)
+    // Kept for reference - RMS normalization is now used instead
     constexpr int NUM_FREQS = 1024;  // worN parameter in sosfreqz
     constexpr double PI = 3.14159265358979323846;
     double maxMag = 0.0;
