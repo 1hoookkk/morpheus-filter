@@ -112,6 +112,25 @@ const ZPlaneFilter::Keyframe ZPlaneFilter::M100_Q0 = {
 // E-MU Q-TO-RADIUS LOOKUP TABLE (Extracted from EmulatorX.bin 2026-02-03)
 // Address: 0x18065bb70, 70 entries
 // Maps Q parameter index (0-69) to filter pole radius
+//
+// ⚠️ WARNING: CURRENTLY UNUSED - FOR RESEARCH ONLY
+// ==============================================================================
+// This table was extracted from the E-mu EmulatorX binary but is NOT currently
+// integrated into the Z-Plane filter implementation. The captured Golden Master
+// radius values (from actual X3 hardware captures) are being used instead via
+// 4-corner bilinear interpolation.
+//
+// RESEARCH NOTES:
+// - EMU table range: 0.986271 (Q=1.0) to 0.500175 (Q=0.0)
+// - Captured values range: 0.998719 to 0.875046 (much narrower, higher)
+// - Each stage in captured data has different radius values
+// - EMU table appears to be a general Q→radius mapping, but may need
+//   scaling/transformation to match Z-Plane filter usage
+//
+// FUTURE WORK:
+// - Investigate if EMU table is for different filter type (e.g., designer EQ)
+// - Determine mathematical relationship between EMU table and captured radii
+// - Consider if table should modulate captured values rather than replace them
 // ==============================================================================
 
 static const double EMU_Q_TO_RADIUS[70] = {
@@ -133,6 +152,10 @@ static const double EMU_Q_TO_RADIUS[70] = {
 
 // Lookup radius from Q parameter using E-mu's authentic curve
 // q: 0.0 (flat/wide) to 1.0 (resonant/narrow)
+//
+// ⚠️ WARNING: CURRENTLY UNUSED - See EMU_Q_TO_RADIUS table comments above
+// This function is provided for future research but is not called by the
+// current Z-Plane filter implementation.
 static double emuRadiusFromQ(double q)
 {
     // q=0 -> low radius (wide), q=1 -> high radius (narrow)

@@ -151,9 +151,35 @@ These suggest a 6-section parametric EQ designer mode separate from the Morph fi
 
 ## 🎯 IMMEDIATE ACTION FOR TRENCH
 
-### Use the Q-to-Radius Table NOW!
+### ⚠️ UPDATE (2026-02-03 Review): Integration Challenge Identified
 
-Replace hardcoded radius values in ZPlaneFilter.cpp with lookup:
+**PROBLEM**: The EMU_Q_TO_RADIUS table cannot be directly substituted for the captured radius values due to significant differences:
+
+1. **Range mismatch**:
+   - EMU table: 0.986 (Q=1.0) → 0.500 (Q=0.0)
+   - Captured values: 0.999 → 0.875 (narrower, much higher)
+
+2. **Per-stage variation**: Captured data has different radius per stage, EMU table is uniform
+
+3. **Unclear relationship**: The mathematical relationship between EMU table and captured values is unknown
+
+**HYPOTHESIS**: The EMU_Q_TO_RADIUS table may be:
+- For a different filter type (designer EQ, not morph filter)
+- A base curve that's transformed before use (scaling, offset)
+- Used in combination with frequency-dependent formulas
+
+**CURRENT STATUS**: Table added to code with warning comments but NOT integrated. Golden Master 4-corner interpolation continues to be used.
+
+**NEXT STEPS**:
+1. Investigate if EMU table is referenced in CPhantomMorph1 class
+2. Find the actual formula that converts EMU table values to filter radii
+3. Determine if table should modulate captured values rather than replace them
+
+### Original Suggestion (May Not Be Correct)
+
+~~Use the Q-to-Radius Table NOW!~~
+
+~~Replace hardcoded radius values in ZPlaneFilter.cpp with lookup:~~
 
 ```cpp
 // Q-to-Radius table from E-mu X3 (70 entries)
