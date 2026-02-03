@@ -109,6 +109,43 @@ const ZPlaneFilter::Keyframe ZPlaneFilter::M100_Q0 = {
 };
 
 // ==============================================================================
+// E-MU Q-TO-RADIUS LOOKUP TABLE (Extracted from EmulatorX.bin 2026-02-03)
+// Address: 0x18065bb70, 70 entries
+// Maps Q parameter index (0-69) to filter pole radius
+// ==============================================================================
+
+static const double EMU_Q_TO_RADIUS[70] = {
+    0.986271, 0.986136, 0.985727, 0.985056, 0.984125,  // 0-4
+    0.982939, 0.981503, 0.979822, 0.977907, 0.975760,  // 5-9
+    0.973381, 0.970770, 0.967930, 0.964859, 0.961557,  // 10-14
+    0.958023, 0.954256, 0.950254, 0.946020, 0.941557,  // 15-19
+    0.936865, 0.931948, 0.926807, 0.921446, 0.915869,  // 20-24
+    0.910076, 0.904072, 0.897861, 0.891445, 0.884827,  // 25-29
+    0.878012, 0.871002, 0.863800, 0.856411, 0.848839,  // 30-34
+    0.841085, 0.833155, 0.825050, 0.816778, 0.808340,  // 35-39
+    0.799742, 0.790985, 0.782074, 0.773016, 0.763811,  // 40-44
+    0.754467, 0.744988, 0.735376, 0.725637, 0.715776,  // 45-49
+    0.705799, 0.695709, 0.685509, 0.675207, 0.664805,  // 50-54
+    0.654308, 0.643722, 0.633051, 0.622301, 0.611477,  // 55-59
+    0.600580, 0.589621, 0.578598, 0.567522, 0.556395,  // 60-64
+    0.545223, 0.534010, 0.522760, 0.511482, 0.500175   // 65-69
+};
+
+// Lookup radius from Q parameter using E-mu's authentic curve
+// q: 0.0 (flat/wide) to 1.0 (resonant/narrow)
+static double emuRadiusFromQ(double q)
+{
+    // q=0 -> low radius (wide), q=1 -> high radius (narrow)
+    // Invert because table goes high-to-low
+    double idx = (1.0 - q) * 69.0;
+    int i = static_cast<int>(idx);
+    if (i >= 69) return EMU_Q_TO_RADIUS[69];
+    if (i < 0) return EMU_Q_TO_RADIUS[0];
+    double frac = idx - i;
+    return EMU_Q_TO_RADIUS[i] + frac * (EMU_Q_TO_RADIUS[i + 1] - EMU_Q_TO_RADIUS[i]);
+}
+
+// ==============================================================================
 // CONSTRUCTOR / DESTRUCTOR
 // ==============================================================================
 
@@ -375,59 +412,48 @@ void ZPlaneFilter::updateCoefficients(double morph, double q)
     }
 
     // ==============================================================
-    // FREQUENCY-DOMAIN GAIN NORMALIZATION (RMS-BASED)
+    // GAIN NORMALIZATION (Peak-based, matching Python golden master)
     // ==============================================================
-    // PROBLEM (Feb 2, 2026): Peak-based normalization doesn't account for
-    // total energy distribution. Broad filters (Q0) have lower peaks but
-    // MORE total energy than resonant filters (Q100).
+    // Strategy: Normalize peak gain to 10.0 (~20 dB), same as Python.
+    // Then apply per-corner calibration to match X3 ground truth RMS levels.
     //
-    // SOLUTION: Use RMS of frequency response magnitude instead of peak.
-    // This properly accounts for energy distribution across the spectrum.
+    // X3 reference RMS levels:
+    //   M0_Q0:     -32.9 dB
+    //   M0_Q100:   -19.8 dB
+    //   M100_Q0:   -25.9 dB
+    //   M100_Q100: -19.3 dB
 
-    // Compute RMS gain BEFORE applying boost
-    double rmsGain = computeCascadeRMSGain();
-    double rmsGainWithBoost = rmsGain * rawBoost;
+    // Compute peak gain of cascade (before boost)
+    double peakGain = computeCascadePeakGain();
+    double peakWithBoost = peakGain * rawBoost;
 
     currentBoost = rawBoost;
 
-    // Normalize to target RMS gain
-    // Target calibrated empirically from X3 reference (Feb 2, 2026):
-    // X3 M0_Q100: input -25.2 dB → output -26.2 dB (gain = -1.0 dB = 0.888x)
-    //
-    // RMS gains vary wildly (61-110 dB) due to different spectral shapes.
-    // Strategy: Normalize to produce correct output level with pink noise input.
-    //
-    // Observed with TARGET=1.0:
-    // - M0_Q100: -23.4 dB (2.8 dB too loud)
-    // - M100_Q100: -25.4 dB (0.8 dB too loud)
-    // Target reduced by 2.8 dB (0.724x) to match X3
-    constexpr double TARGET_RMS_GAIN = 0.724;  // Calibrated for -26 dB RMS output
-
-    if (rmsGainWithBoost > 0.001) {  // Safety check for non-zero
-        double normFactor = TARGET_RMS_GAIN / rmsGainWithBoost;
+    // Normalize peak to 10.0 (same as Python golden master)
+    if (peakWithBoost > 100.0) {
+        double normFactor = 10.0 / peakWithBoost;
         currentBoost *= normFactor;
     }
 
-    // Q-dependent fine-tuning (empirical adjustment)
-    // Q0 (flat) corners have broader bandwidth, interact differently with pink noise
-    if (q < 0.5) {
-        // Observed: M0_Q0 still 8 dB too loud even after RMS normalization
-        // Need stronger attenuation than Q100 corners
-        currentBoost *= 0.5;  // -6 dB additional attenuation
-    }
+    // Per-corner calibration to match X3 ground truth RMS levels
+    // Calibrated from measured output vs X3 reference (Feb 3, 2026)
+    constexpr double CAL_M0_Q0     = 0.010;   // -32.9 dB target
+    constexpr double CAL_M0_Q100   = 0.53;    // -19.8 dB target
+    constexpr double CAL_M100_Q0   = 0.15;    // -25.9 dB target
+    constexpr double CAL_M100_Q100 = 0.72;    // -19.3 dB target
+
+    // Bilinear interpolation of calibration factor
+    double calStart = lerp(CAL_M0_Q0, CAL_M0_Q100, q);
+    double calEnd = lerp(CAL_M100_Q0, CAL_M100_Q100, q);
+    double calibration = lerp(calStart, calEnd, morph);
+
+    currentBoost *= calibration;
 
 #if ZPLANE_DEBUG
-    // Debug: Show normalization details
     static int debugCount = 0;
-    if (debugCount < 8) {  // Show all 4 corners (2 calls each)
-        double expectedRMS = rmsGain * currentBoost;
-
-        printf("  [Normalization RMS-based] rmsGain=%.6f (%.1f dB), rawBoost=%.6f\n",
-               rmsGain, 20.0 * std::log10(rmsGain + 1e-12), rawBoost);
-        printf("  [Target] rmsWithBoost=%.6f → NORMALIZE to target=%.1f\n",
-               rmsGainWithBoost, TARGET_RMS_GAIN);
-        printf("  [Result] finalBoost=%.6f, expectedRMS=%.6f (%.1f dB)\n",
-               currentBoost, expectedRMS, 20.0 * std::log10(expectedRMS + 1e-12));
+    if (debugCount < 8) {
+        printf("  [Norm] peak=%.1f, peakWithBoost=%.1f, cal=%.3f, finalBoost=%.6f\n",
+               peakGain, peakWithBoost, calibration, currentBoost);
         debugCount++;
     }
 #endif
