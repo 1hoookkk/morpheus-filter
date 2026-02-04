@@ -436,11 +436,18 @@ void ZPlaneFilter::updateCoefficients(double morph, double q)
     }
 
     // Per-corner calibration to match X3 ground truth RMS levels
-    // Calibrated from measured output vs X3 reference (Feb 3, 2026)
-    constexpr double CAL_M0_Q0     = 0.010;   // -32.9 dB target
-    constexpr double CAL_M0_Q100   = 0.53;    // -19.8 dB target
-    constexpr double CAL_M100_Q0   = 0.15;    // -25.9 dB target
-    constexpr double CAL_M100_Q100 = 0.72;    // -19.3 dB target
+    // Target: -20 dB RMS for all corners (same as Q100)
+    //
+    // GAIN MAP FIX (Feb 4, 2026):
+    // Q0 corners were 15-19 dB too hot due to peak-based normalization
+    // not capturing broad filter energy. Reduced Q0 calibration values:
+    // - M0_Q0:   was 0.010, actual -4.8 dB, need -15.2 dB cut → 0.0017
+    // - M100_Q0: was 0.15,  actual -1.3 dB, need -18.7 dB cut → 0.017
+    // Q100 values unchanged to preserve working corners.
+    constexpr double CAL_M0_Q0     = 0.0017;  // -20 dB target (was 0.010 - 15.2 dB too hot)
+    constexpr double CAL_M0_Q100   = 0.53;    // -20 dB target ✓
+    constexpr double CAL_M100_Q0   = 0.017;   // -20 dB target (was 0.15 - 18.7 dB too hot)
+    constexpr double CAL_M100_Q100 = 0.72;    // -20 dB target ✓
 
     // Bilinear interpolation of calibration factor
     double calStart = lerp(CAL_M0_Q0, CAL_M0_Q100, q);
